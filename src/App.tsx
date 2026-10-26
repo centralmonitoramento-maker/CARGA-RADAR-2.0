@@ -156,23 +156,55 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
   const [users, setUsers] = useState<User[]>(() => {
     try {
       const persisted = localStorage.getItem('cargoradar_users');
+      let userList: User[] = [];
       if (persisted) {
         const parsed = JSON.parse(persisted);
         if (parsed && Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          userList = parsed;
         }
       }
-      const defaultUsers: User[] = [
-        { id: 'master', username: 'cleiton', password: '123456', role: 'audit', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString(), fullName: 'Administrador Cleiton' },
-        { id: '1', username: 'CARGADD', password: '123456', role: 'expedition', systemRole: 'dispatcher', status: 'active', createdAt: new Date().toISOString() },
-        { id: '2', username: 'LIBERACAO', password: 'CENTRAL123', role: 'central', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString() },
-        { id: '3', username: 'AUDITORIA', password: 'AUDITOR123', role: 'audit', systemRole: 'auditor', status: 'active', createdAt: new Date().toISOString() },
-        { id: '4', username: 'ANALISE', password: 'ANALISE123', role: 'analysis', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString() },
-      ];
-      localStorage.setItem('cargoradar_users', JSON.stringify(defaultUsers));
-      return defaultUsers;
+
+      if (userList.length === 0) {
+        userList = [
+          { id: 'master', username: 'Cleiton', password: '361485', role: 'audit', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString(), fullName: 'Master Cleiton' },
+          { id: '1', username: 'CARGADD', password: '123456', role: 'expedition', systemRole: 'dispatcher', status: 'active', createdAt: new Date().toISOString() },
+          { id: '2', username: 'LIBERACAO', password: 'CENTRAL123', role: 'central', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString() },
+          { id: '3', username: 'AUDITORIA', password: 'AUDITOR123', role: 'audit', systemRole: 'auditor', status: 'active', createdAt: new Date().toISOString() },
+          { id: '4', username: 'ANALISE', password: 'ANALISE123', role: 'analysis', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString() },
+        ];
+      }
+
+      // Always guarantee Cleiton has password 361485 and administrator permissions
+      const cleitonIdx = userList.findIndex(u => u.username && u.username.trim().toUpperCase() === 'CLEITON');
+      if (cleitonIdx >= 0) {
+        userList[cleitonIdx] = {
+          ...userList[cleitonIdx],
+          username: 'Cleiton',
+          password: '361485',
+          role: 'audit',
+          systemRole: 'administrator',
+          status: 'active',
+          fullName: userList[cleitonIdx].fullName || 'Master Cleiton'
+        };
+      } else {
+        userList.unshift({
+          id: 'master',
+          username: 'Cleiton',
+          password: '361485',
+          role: 'audit',
+          systemRole: 'administrator',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          fullName: 'Master Cleiton'
+        });
+      }
+
+      localStorage.setItem('cargoradar_users', JSON.stringify(userList));
+      return userList;
     } catch {
-      return [];
+      return [
+        { id: 'master', username: 'Cleiton', password: '361485', role: 'audit', systemRole: 'administrator', status: 'active', createdAt: new Date().toISOString(), fullName: 'Master Cleiton' }
+      ];
     }
   });
 
@@ -850,6 +882,16 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
         );
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <LoginView 
+        users={users}
+        onLoginSuccess={handleLoginSuccess} 
+        onRegisterRequest={handleRegisterUser}
+      />
+    );
+  }
 
   return (
     <Layout 

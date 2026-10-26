@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global helper primitives
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Cargo loads collection: accessible for reading and writing operational logistics
+    match /loads/{loadId} {
+      allow read: if true;
+      allow create: if isValidId(loadId)
+                    && incoming().id is string
+                    && incoming().plate is string
+                    && incoming().status is string;
+      allow update: if isValidId(loadId)
+                    && incoming().id is string
+                    && incoming().plate is string;
+      allow delete: if isValidId(loadId);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if isValidId(userId)
+                            && incoming().username is string
+                            && incoming().role is string;
+      allow delete: if isValidId(userId);
+    }
+
+    // Audit Event Logs collection: append-only audit trail
+    match /logs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId)
+                    && incoming().username is string
+                    && incoming().action is string;
+      allow update, delete: if false; // Append-only immutable log
+    }
+
+    // System Settings collection
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isValidId(settingId);
+      allow delete: if false;
+    }
+  }
+}

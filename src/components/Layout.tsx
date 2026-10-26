@@ -229,8 +229,8 @@ export const Layout: React.FC<LayoutProps> = ({
         <aside className="hidden lg:flex flex-col w-72 bg-[#0a0915] text-white sticky top-0 h-screen border-r border-[#1f1b40] flex-shrink-0 z-30 shadow-2xl">
           {/* Top Branding Header */}
           <div className="flex items-center gap-3 px-6 py-6 border-b border-[#1f1b40] bg-[#080714]/50">
-            <div className="relative w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-primary-gold overflow-hidden flex-shrink-0">
-              <img src="/logo.png" alt="Prev de Perdas" className="w-full h-full object-cover animate-in fade-in zoom-in-50 duration-500" />
+            <div className="relative w-12 h-12 bg-white keep-white rounded-full flex items-center justify-center shadow-lg border-2 border-primary-gold overflow-hidden flex-shrink-0 p-0.5">
+              <img src="/logo.png" alt="CargaRadar" className="w-full h-full object-contain rounded-full animate-in fade-in zoom-in-50 duration-500" />
             </div>
             <div>
               <h1 className="text-sm font-black tracking-tighter leading-none text-white uppercase">CARGARADAR</h1>
@@ -354,8 +354,8 @@ export const Layout: React.FC<LayoutProps> = ({
           <div className="relative flex flex-col w-72 max-w-xs bg-[#0a0915] text-white h-full shadow-2xl p-5 space-y-6 animate-in slide-in-from-left duration-300">
             <div className="flex items-center justify-between border-b border-[#1f1b40] pb-4 border-opacity-70">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center border-2 border-primary-gold overflow-hidden">
-                  <img src="/logo.png" alt="Prev de Perdas" className="w-full h-full object-cover" />
+                <div className="w-10 h-10 bg-white keep-white rounded-full flex items-center justify-center border-2 border-primary-gold overflow-hidden p-0.5">
+                  <img src="/logo.png" alt="CargaRadar" className="w-full h-full object-contain rounded-full" />
                 </div>
                 <div>
                   <h1 className="text-sm font-black leading-none text-white">CARGARADAR</h1>
@@ -497,8 +497,8 @@ export const Layout: React.FC<LayoutProps> = ({
                 
                 {/* Branding or Section Indicator */}
                 <div className="flex items-center gap-2">
-                  <div className="lg:hidden relative w-9 h-9 bg-white keep-white rounded-xl flex items-center justify-center shadow-md overflow-hidden">
-                    <img src="/logo.png" alt="Prev de Perdas" className="w-full h-full object-cover" />
+                  <div className="lg:hidden relative w-9 h-9 bg-white keep-white rounded-full flex items-center justify-center shadow-md overflow-hidden border border-primary-gold p-0.5">
+                    <img src="/logo.png" alt="CargaRadar" className="w-full h-full object-contain rounded-full" />
                   </div>
                   <div>
                     <h2 className="text-xs sm:text-xs font-black uppercase text-white tracking-widest hidden lg:block select-none mt-0.5">

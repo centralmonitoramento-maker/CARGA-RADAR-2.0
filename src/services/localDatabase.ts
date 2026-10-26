@@ -1,7 +1,9 @@
 // Local Reactive Database & Auth Service for CargaRadar
-// Replaces external Firebase dependencies with high-performance, resilient local storage persistence and reactive events.
+// Seamlessly backed by Firebase Cloud Firestore with offline-first local cache and reactive events.
 
 import { CargoLoad, User, EventLog, SystemRole, OccurrenceType, CargoStatus } from '../types';
+import { db, handleFirestoreError, OperationType } from './firebase';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   LOADS: 'cargoradar_loads',
@@ -14,6 +16,18 @@ const STORAGE_KEYS = {
 
 // Default seed users if none exist in localStorage
 const DEFAULT_USERS: User[] = [
+  {
+    id: 'user_master_cleiton',
+    username: 'Cleiton',
+    password: '361485',
+    fullName: 'Master Cleiton',
+    role: 'audit',
+    systemRole: 'administrator',
+    status: 'active',
+    storeLocation: 'CD-01 - Centro de Distribuição 01',
+    jobFunction: 'Gestor Master / Administrador do Sistema',
+    createdAt: new Date().toISOString()
+  },
   {
     id: 'user_admin_01',
     username: 'admin',
@@ -120,9 +134,12 @@ class LocalDatabase {
     feedbacks: new Set()
   };
 
+  private isFirestoreInitialized = false;
+
   constructor() {
     if (typeof window !== 'undefined') {
       this.initSeedData();
+      this.initFirestoreSync();
       window.addEventListener('storage', (event) => {
         if (event.key === STORAGE_KEYS.LOADS) this.notify('loads', this.getLoads());
         if (event.key === STORAGE_KEYS.USERS) this.notify('users', this.getUsers());
@@ -139,9 +156,36 @@ class LocalDatabase {
       if (!storedUsers || JSON.parse(storedUsers).length === 0) {
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
       } else {
-        // Ensure default accounts exist if missing
         const parsed: User[] = JSON.parse(storedUsers);
         let updated = false;
+
+        // Guarantee master user Cleiton is active with password 361485 and administrator role
+        const cleitonUser = parsed.find(u => normalizeStr(u.username) === 'CLEITON');
+        if (cleitonUser) {
+          if (cleitonUser.password !== '361485' || cleitonUser.systemRole !== 'administrator' || cleitonUser.status !== 'active') {
+            cleitonUser.password = '361485';
+            cleitonUser.systemRole = 'administrator';
+            cleitonUser.role = 'audit';
+            cleitonUser.status = 'active';
+            cleitonUser.fullName = cleitonUser.fullName || 'Master Cleiton';
+            updated = true;
+          }
+        } else {
+          parsed.unshift({
+            id: 'user_master_cleiton',
+            username: 'Cleiton',
+            password: '361485',
+            fullName: 'Master Cleiton',
+            role: 'audit',
+            systemRole: 'administrator',
+            status: 'active',
+            storeLocation: 'CD-01 - Centro de Distribuição 01',
+            jobFunction: 'Gestor Master / Administrador do Sistema',
+            createdAt: new Date().toISOString()
+          });
+          updated = true;
+        }
+
         DEFAULT_USERS.forEach(def => {
           if (!parsed.some(u => normalizeStr(u.username) === normalizeStr(def.username))) {
             parsed.push(def);
@@ -170,6 +214,124 @@ class LocalDatabase {
       }
     } catch (err) {
       console.warn('Erro ao inicializar semente local:', err);
+    }
+  }
+
+  // Real-time Firestore sync with local cache
+  private initFirestoreSync() {
+    if (this.isFirestoreInitialized) return;
+    this.isFirestoreInitialized = true;
+
+    try {
+      // 1. Loads listener
+      const loadsPath = 'loads';
+      onSnapshot(
+        collection(db, loadsPath),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const firestoreLoads: CargoLoad[] = [];
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data() as CargoLoad;
+              firestoreLoads.push(data);
+            });
+            // Update local storage and notify
+            localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(firestoreLoads));
+            this.notify('loads', firestoreLoads);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, loadsPath);
+        }
+      );
+
+      // 2. Users listener
+      const usersPath = 'users';
+      onSnapshot(
+        collection(db, usersPath),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const firestoreUsers: User[] = [];
+            snapshot.forEach((docSnap) => {
+              const data = docSnap.data() as User;
+              firestoreUsers.push(data);
+            });
+
+            // Ensure Cleiton always has full admin role and 361485
+            const cleitonUser = firestoreUsers.find(u => normalizeStr(u.username) === 'CLEITON');
+            if (cleitonUser) {
+              cleitonUser.password = '361485';
+              cleitonUser.systemRole = 'administrator';
+              cleitonUser.status = 'active';
+            } else {
+              firestoreUsers.unshift(DEFAULT_USERS[0]);
+            }
+
+            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(firestoreUsers));
+            this.notify('users', firestoreUsers);
+          } else {
+            // Seed master users to Firestore if collection is empty
+            this.seedUsersToFirestore();
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, usersPath);
+        }
+      );
+
+      // 3. Logs listener
+      const logsPath = 'logs';
+      onSnapshot(
+        collection(db, logsPath),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const firestoreLogs: EventLog[] = [];
+            snapshot.forEach((docSnap) => {
+              firestoreLogs.push(docSnap.data() as EventLog);
+            });
+            // Sort by timestamp descending
+            firestoreLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const trimmed = firestoreLogs.slice(0, 500);
+            localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(trimmed));
+            this.notify('logs', trimmed);
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, logsPath);
+        }
+      );
+
+      // 4. Settings listener
+      const settingsPath = 'settings';
+      onSnapshot(
+        collection(db, settingsPath),
+        (snapshot) => {
+          if (!snapshot.empty) {
+            snapshot.forEach((docSnap) => {
+              if (docSnap.id === 'system_config') {
+                const data = docSnap.data();
+                localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(data));
+                this.notify('settings', data);
+              }
+            });
+          }
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, settingsPath);
+        }
+      );
+    } catch (err) {
+      console.warn('Firestore sync listener setup failed (offline mode active):', err);
+    }
+  }
+
+  private async seedUsersToFirestore() {
+    try {
+      const usersToSeed = this.getUsers();
+      for (const u of usersToSeed) {
+        await setDoc(doc(db, 'users', u.id), u, { merge: true });
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'users');
     }
   }
 
@@ -209,54 +371,91 @@ class LocalDatabase {
     }
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(loads));
     this.notify('loads', loads);
+
+    // Sync to Firestore
+    setDoc(doc(db, 'loads', load.id), load, { merge: true }).catch((err) => {
+      handleFirestoreError(err, OperationType.WRITE, `loads/${load.id}`);
+    });
+
     return load;
   }
 
   saveLoads(newLoads: CargoLoad[]) {
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(newLoads));
     this.notify('loads', newLoads);
+
+    // Sync batch to Firestore
+    try {
+      newLoads.forEach(load => {
+        setDoc(doc(db, 'loads', load.id), load, { merge: true }).catch(err => {
+          handleFirestoreError(err, OperationType.WRITE, `loads/${load.id}`);
+        });
+      });
+    } catch (err) {
+      console.warn('Erro ao sincronizar lote de cargas no Firestore:', err);
+    }
   }
 
   deleteLoad(loadId: string) {
     const loads = this.getLoads().filter(l => l.id !== loadId);
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(loads));
     this.notify('loads', loads);
+
+    // Delete in Firestore
+    deleteDoc(doc(db, 'loads', loadId)).catch((err) => {
+      handleFirestoreError(err, OperationType.DELETE, `loads/${loadId}`);
+    });
   }
 
-  // Remove an individual record (either load or audit occurrence/log)
-  deleteRecordById(id: string, type: 'carga' | 'audit'): boolean {
-    if (type === 'carga') {
-      const loads = this.getLoads();
-      const load = loads.find(l => l.id === id);
-      if (load) {
-        const filtered = loads.filter(l => l.id !== id);
-        localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(filtered));
-        this.notify('loads', filtered);
-        this.addLog('Exclusão de Carga', `Registro da carga ${load.plate} excluído permanentemente pelo Administrador Master`, 'Administrador Master', id);
+  getLoadById(id: string): CargoLoad | undefined {
+    return this.getLoads().find(l => l.id === id);
+  }
+
+  // Clean occurrence from load
+  deleteOccurrence(loadId: string, occurrenceTimestamp: string): boolean {
+    const loads = this.getLoads();
+    const loadIndex = loads.findIndex(l => l.id === loadId);
+    
+    if (loadIndex >= 0) {
+      const load = loads[loadIndex];
+      let updated = false;
+
+      if (load.occurrenceHistory && load.occurrenceHistory.length > 0) {
+        const initialCount = load.occurrenceHistory.length;
+        load.occurrenceHistory = load.occurrenceHistory.filter(occ => occ.timestamp !== occurrenceTimestamp);
+        
+        if (load.occurrenceHistory.length !== initialCount) {
+          updated = true;
+        }
+      }
+
+      if (load.occurrenceHistory && load.occurrenceHistory.length === 0) {
+        delete load.occurrenceHistory;
+        load.occurrenceType = OccurrenceType.NONE;
+        delete load.occurrenceDescription;
+        delete load.occurrencePhoto;
+        updated = true;
+      }
+
+      if (updated) {
+        loads[loadIndex] = { ...load };
+        this.saveLoads(loads);
         return true;
       }
-      return false;
     }
 
-    if (type === 'audit') {
-      // 1. Check if it matches an EventLog
-      const logs = this.getLogs();
-      const logIndex = logs.findIndex(l => l.id === id);
-      if (logIndex >= 0) {
-        const deletedLog = logs[logIndex];
-        const filteredLogs = logs.filter(l => l.id !== id);
-        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(filteredLogs));
-        this.notify('logs', filteredLogs);
-        return true;
-      }
+    return false;
+  }
 
-      // 2. Check if it matches a CargoLoad in loads (audited record)
-      const loads = this.getLoads();
-      const load = loads.find(l => l.id === id);
-      if (load) {
-        const filtered = loads.filter(l => l.id !== id);
-        localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(filtered));
-        this.notify('loads', filtered);
+  // Delete audited load
+  deleteAuditedLoad(id: string): boolean {
+    const loads = this.getLoads();
+    const loadIndex = loads.findIndex(l => l.id === id);
+
+    if (loadIndex >= 0) {
+      const load = loads[loadIndex];
+      if (load.auditedAt || load.status === CargoStatus.FINISHED || load.status === CargoStatus.BLOCKED) {
+        this.deleteLoad(id);
         this.addLog('Exclusão de Registro Auditado', `Registro auditado da carga ${load.plate} excluído pelo Administrador Master`, 'Administrador Master', id);
         return true;
       }
@@ -265,7 +464,33 @@ class LocalDatabase {
     return false;
   }
 
-  // Clear all operational loads, audit history and logs while preserving users and settings
+  // Delete record by id and type
+  deleteRecordById(id: string, type?: string): boolean {
+    if (type === 'load' || !type) {
+      this.deleteLoad(id);
+      return true;
+    }
+    if (type === 'occurrence') {
+      const loads = this.getLoads();
+      for (const load of loads) {
+        if (load.occurrenceHistory?.some(occ => occ.timestamp === id)) {
+          return this.deleteOccurrence(load.id, id);
+        }
+      }
+      return false;
+    }
+    if (type === 'log') {
+      const logs = this.getLogs().filter(l => l.id !== id);
+      localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
+      this.notify('logs', logs);
+      deleteDoc(doc(db, 'logs', id)).catch(err => {
+        handleFirestoreError(err, OperationType.DELETE, `logs/${id}`);
+      });
+      return true;
+    }
+    return false;
+  }
+
   clearAllSystemData() {
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify([]));
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify([]));
@@ -302,6 +527,12 @@ class LocalDatabase {
     }
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     this.notify('users', users);
+
+    // Sync to Firestore
+    setDoc(doc(db, 'users', user.id), user, { merge: true }).catch((err) => {
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
+    });
+
     return user;
   }
 
@@ -312,6 +543,12 @@ class LocalDatabase {
       users[index] = { ...users[index], ...partial };
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       this.notify('users', users);
+
+      // Sync to Firestore
+      setDoc(doc(db, 'users', userId), partial, { merge: true }).catch((err) => {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+      });
+
       return users[index];
     }
     return null;
@@ -321,6 +558,28 @@ class LocalDatabase {
     const users = this.getUsers().filter(u => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     this.notify('users', users);
+
+    // Sync to Firestore
+    deleteDoc(doc(db, 'users', userId)).catch((err) => {
+      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
+    });
+  }
+
+  // Register new user request
+  register(userData: Omit<User, 'id' | 'createdAt'>): { success: boolean; message: string; user?: User } {
+    const users = this.getUsers();
+    const existing = users.find(u => normalizeStr(u.username) === normalizeStr(userData.username));
+    if (existing) {
+      return { success: false, message: 'Nome de usuário já cadastrado.' };
+    }
+    const newUser: User = {
+      ...userData,
+      id: generateLocalId(),
+      status: userData.status || 'pending',
+      createdAt: new Date().toISOString()
+    };
+    this.saveUser(newUser);
+    return { success: true, message: 'Cadastro enviado para aprovação.', user: newUser };
   }
 
   subscribeUsers(callback: (users: User[]) => void): () => void {
@@ -351,10 +610,15 @@ class LocalDatabase {
       userId
     };
     logs.unshift(newLog);
-    // Keep max 500 logs in memory
     const trimmed = logs.slice(0, 500);
     localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(trimmed));
     this.notify('logs', trimmed);
+
+    // Sync to Firestore
+    setDoc(doc(db, 'logs', newLog.id), newLog).catch((err) => {
+      handleFirestoreError(err, OperationType.CREATE, `logs/${newLog.id}`);
+    });
+
     return newLog;
   }
 
@@ -379,6 +643,11 @@ class LocalDatabase {
     const merged = { ...current, ...settings };
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
     this.notify('settings', merged);
+
+    // Sync to Firestore
+    setDoc(doc(db, 'settings', 'system_config'), merged, { merge: true }).catch((err) => {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/system_config');
+    });
   }
 
   subscribeSettings(callback: (settings: Record<string, any>) => void): () => void {
@@ -411,7 +680,7 @@ class LocalDatabase {
     return () => this.listeners.feedbacks.delete(callback);
   }
 
-  // --- AUTH SERVICE ---
+  // --- CURRENT USER SESSION ---
   getCurrentUser(): User | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
@@ -427,70 +696,11 @@ class LocalDatabase {
     } else {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cargoradar_auth_changed', { detail: user }));
-    }
-  }
-
-  login(usernameOrEmail: string, pass: string): { user?: User; error?: string } {
-    const users = this.getUsers();
-    const cleanInput = normalizeStr(usernameOrEmail);
-
-    const user = users.find(u => {
-      const uName = normalizeStr(u.username);
-      const uEmail = u.username.includes('@') ? normalizeStr(u.username) : '';
-      return uName === cleanInput || uEmail === cleanInput;
-    });
-
-    if (!user) {
-      return { error: `Usuário "${usernameOrEmail}" não encontrado no sistema.` };
-    }
-
-    if (user.password && user.password !== pass) {
-      return { error: 'Senha incorreta. Verifique suas credenciais.' };
-    }
-
-    if (user.status === 'pending') {
-      return { error: 'Seu cadastro está pendente de aprovação pela Auditoria / Supervisão.' };
-    }
-
-    if (user.status === 'rejected') {
-      return { error: 'Seu cadastro foi recusado pela Auditoria / Supervisão.' };
-    }
-
-    this.setCurrentUser(user);
-    this.addLog('Login no Sistema', `Usuário ${user.username} iniciou sessão com perfil ${user.role}`, user.username, undefined, user.id);
-    return { user };
-  }
-
-  register(userData: Omit<User, 'id' | 'createdAt' | 'status'> & { status?: 'pending' | 'active' }): { user?: User; error?: string } {
-    const users = this.getUsers();
-    const cleanInput = normalizeStr(userData.username);
-
-    if (users.some(u => normalizeStr(u.username) === cleanInput)) {
-      return { error: 'Este nome de usuário já está cadastrado no sistema.' };
-    }
-
-    const newUser: User = {
-      id: generateLocalId(),
-      ...userData,
-      status: userData.status || 'pending',
-      createdAt: new Date().toISOString()
-    };
-
-    this.saveUser(newUser);
-    this.addLog('Solicitação de Cadastro', `Novo usuário ${newUser.username} solicitou acesso como ${newUser.role}`, newUser.username, undefined, newUser.id);
-    return { user: newUser };
   }
 
   logout() {
-    const current = this.getCurrentUser();
-    if (current) {
-      this.addLog('Logout do Sistema', `Usuário ${current.username} encerrou a sessão`, current.username, undefined, current.id);
-    }
     this.setCurrentUser(null);
   }
 }
 
 export const localDb = new LocalDatabase();
-export const sanitizeLocalData = <T extends Record<string, any>>(data: T): T => data;

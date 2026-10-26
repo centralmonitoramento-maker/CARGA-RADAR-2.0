@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "CargoLoad": {
+      "title": "CargoLoad",
+      "description": "Logistics cargo release record with seals, photos, and verification checkpoints",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "plate": { "type": "string", "maxLength": 30 },
+        "driverName": { "type": "string", "maxLength": 120 },
+        "driverPhone": { "type": "string", "maxLength": 30 },
+        "cargoType": { "type": "string", "maxLength": 80 },
+        "origin": { "type": "string", "maxLength": 120 },
+        "destination": { "type": "string", "maxLength": 120 },
+        "sealNumber": { "type": "string", "maxLength": 60 },
+        "palletCount": { "type": "number" },
+        "status": { "type": "string", "maxLength": 50 },
+        "createdBy": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 50 },
+        "isHighRisk": { "type": "boolean" },
+        "occurrenceType": { "type": "string", "maxLength": 60 },
+        "occurrenceDescription": { "type": "string", "maxLength": 1000 },
+        "gateVerified": { "type": "boolean" },
+        "gateStatus": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "plate", "driverName", "cargoType", "origin", "destination", "sealNumber", "status", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "System operator or auditor account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 60 },
+        "fullName": { "type": "string", "maxLength": 120 },
+        "role": { "type": "string", "maxLength": 50 },
+        "systemRole": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 30 },
+        "storeLocation": { "type": "string", "maxLength": 120 },
+        "jobFunction": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "username", "role", "status", "createdAt"]
+    },
+    "EventLog": {
+      "title": "EventLog",
+      "description": "Audit event log entry for logistics operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "maxLength": 50 },
+        "username": { "type": "string", "maxLength": 60 },
+        "action": { "type": "string", "maxLength": 100 },
+        "details": { "type": "string", "maxLength": 1000 },
+        "loadId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "timestamp", "username", "action", "details"]
+    },
+    "SystemSettings": {
+      "title": "SystemSettings",
+      "description": "Operational settings and SLA configurations",
+      "type": "object",
+      "properties": {
+        "yardSlaTargetHours": { "type": "number" },
+        "occurrenceAlertEmails": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "/loads/{loadId}": {
+      "schema": { "$ref": "CargoLoad" },
+      "description": "Collection of all logistical cargo releases and their real-time validation states"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "Collection of system operators, drivers and administrative accounts"
+    },
+    "/logs/{logId}": {
+      "schema": { "$ref": "EventLog" },
+      "description": "Append-only operational audit trail"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "SystemSettings" },
+      "description": "System parameters and alert email routing settings"
+    }
+  }
+}
