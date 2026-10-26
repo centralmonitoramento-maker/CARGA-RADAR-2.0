@@ -125,6 +125,30 @@ export function generateLocalId(): string {
   return 'id_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
 }
 
+// Deep sanitization for Firestore: converts undefined to omitted/clean values so setDoc never fails
+export function sanitizeForFirestore<T = any>(obj: T): any {
+  if (obj === null || obj === undefined) {
+    return null;
+  }
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return (obj as any[])
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeForFirestore(item));
+  }
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj as Record<string, any>)) {
+    if (val === undefined) {
+      // Completely omit undefined fields to satisfy Firestore strict requirements
+      continue;
+    }
+    cleaned[key] = sanitizeForFirestore(val);
+  }
+  return cleaned;
+}
+
 class LocalDatabase {
   private listeners: { [key: string]: Set<(data: any) => void> } = {
     loads: new Set(),
@@ -328,7 +352,8 @@ class LocalDatabase {
     try {
       const usersToSeed = this.getUsers();
       for (const u of usersToSeed) {
-        await setDoc(doc(db, 'users', u.id), u, { merge: true });
+        const sanitizedUser = sanitizeForFirestore(u);
+        await setDoc(doc(db, 'users', u.id), sanitizedUser, { merge: true });
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'users');
@@ -362,32 +387,54 @@ class LocalDatabase {
   }
 
   saveLoad(load: CargoLoad): CargoLoad {
+    // Explicitly guarantee driverPhone and other core strings are never undefined
+    const sanitizedLoad: CargoLoad = {
+      ...load,
+      driverPhone: typeof load.driverPhone === 'string' ? load.driverPhone : (load.driverPhone ?? ''),
+      origin: load.origin || '',
+      destination: load.destination || '',
+      plate: load.plate || '',
+      driverName: load.driverName || '',
+      sealNumber: load.sealNumber || '',
+      status: load.status || CargoStatus.AWAITING,
+    };
+
     const loads = this.getLoads();
-    const existingIndex = loads.findIndex(l => l.id === load.id);
+    const existingIndex = loads.findIndex(l => l.id === sanitizedLoad.id);
     if (existingIndex >= 0) {
-      loads[existingIndex] = { ...loads[existingIndex], ...load };
+      loads[existingIndex] = { ...loads[existingIndex], ...sanitizedLoad };
     } else {
-      loads.unshift(load);
+      loads.unshift(sanitizedLoad);
     }
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(loads));
     this.notify('loads', loads);
 
-    // Sync to Firestore
-    setDoc(doc(db, 'loads', load.id), load, { merge: true }).catch((err) => {
-      handleFirestoreError(err, OperationType.WRITE, `loads/${load.id}`);
+    // Sync to Firestore with strict sanitization ensuring zero undefined fields
+    const firestorePayload = sanitizeForFirestore(sanitizedLoad);
+    setDoc(doc(db, 'loads', sanitizedLoad.id), firestorePayload, { merge: true }).catch((err) => {
+      handleFirestoreError(err, OperationType.WRITE, `loads/${sanitizedLoad.id}`);
     });
 
-    return load;
+    return sanitizedLoad;
   }
 
   saveLoads(newLoads: CargoLoad[]) {
-    localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(newLoads));
-    this.notify('loads', newLoads);
+    const sanitizedList = newLoads.map(load => ({
+      ...load,
+      driverPhone: typeof load.driverPhone === 'string' ? load.driverPhone : (load.driverPhone ?? ''),
+      origin: load.origin || '',
+      destination: load.destination || '',
+      plate: load.plate || '',
+      driverName: load.driverName || '',
+    }));
+    localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(sanitizedList));
+    this.notify('loads', sanitizedList);
 
     // Sync batch to Firestore
     try {
-      newLoads.forEach(load => {
-        setDoc(doc(db, 'loads', load.id), load, { merge: true }).catch(err => {
+      sanitizedList.forEach(load => {
+        const firestorePayload = sanitizeForFirestore(load);
+        setDoc(doc(db, 'loads', load.id), firestorePayload, { merge: true }).catch(err => {
           handleFirestoreError(err, OperationType.WRITE, `loads/${load.id}`);
         });
       });
@@ -529,7 +576,8 @@ class LocalDatabase {
     this.notify('users', users);
 
     // Sync to Firestore
-    setDoc(doc(db, 'users', user.id), user, { merge: true }).catch((err) => {
+    const firestoreUser = sanitizeForFirestore(user);
+    setDoc(doc(db, 'users', user.id), firestoreUser, { merge: true }).catch((err) => {
       handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
     });
 
@@ -545,7 +593,8 @@ class LocalDatabase {
       this.notify('users', users);
 
       // Sync to Firestore
-      setDoc(doc(db, 'users', userId), partial, { merge: true }).catch((err) => {
+      const firestorePartial = sanitizeForFirestore(partial);
+      setDoc(doc(db, 'users', userId), firestorePartial, { merge: true }).catch((err) => {
         handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
       });
 
@@ -603,11 +652,11 @@ class LocalDatabase {
     const newLog: EventLog = {
       id: generateLocalId(),
       timestamp: new Date().toISOString(),
-      action,
-      details,
-      username,
-      loadId,
-      userId
+      action: action || '',
+      details: details || '',
+      username: username || 'Sistema',
+      loadId: loadId || '',
+      userId: userId || ''
     };
     logs.unshift(newLog);
     const trimmed = logs.slice(0, 500);
@@ -615,7 +664,8 @@ class LocalDatabase {
     this.notify('logs', trimmed);
 
     // Sync to Firestore
-    setDoc(doc(db, 'logs', newLog.id), newLog).catch((err) => {
+    const firestoreLog = sanitizeForFirestore(newLog);
+    setDoc(doc(db, 'logs', newLog.id), firestoreLog).catch((err) => {
       handleFirestoreError(err, OperationType.CREATE, `logs/${newLog.id}`);
     });
 
@@ -645,7 +695,8 @@ class LocalDatabase {
     this.notify('settings', merged);
 
     // Sync to Firestore
-    setDoc(doc(db, 'settings', 'system_config'), merged, { merge: true }).catch((err) => {
+    const firestoreSettings = sanitizeForFirestore(merged);
+    setDoc(doc(db, 'settings', 'system_config'), firestoreSettings, { merge: true }).catch((err) => {
       handleFirestoreError(err, OperationType.WRITE, 'settings/system_config');
     });
   }

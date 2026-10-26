@@ -657,9 +657,9 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
 
       if (selectedRegionStoreSearch.trim()) {
         const term = selectedRegionStoreSearch.toLowerCase();
-        const label = (ROUTE_COORDINATES[storeName]?.label || storeName).toLowerCase();
+        const label = (ROUTE_COORDINATES[storeName]?.label || storeName || '').toLowerCase();
         const address = (ROUTE_COORDINATES[storeName]?.address || '').toLowerCase();
-        return label.includes(term) || address.includes(term) || storeName.toLowerCase().includes(term);
+        return label.includes(term) || address.includes(term) || (storeName || '').toLowerCase().includes(term);
       }
       return true;
     });
@@ -1397,20 +1397,23 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
   const getRouteInfo = (load: CargoLoad) => {
     if (!load.origin || !load.destination) return null;
 
+    const originStr = (load.origin || '').toLowerCase();
+    const destStr = (load.destination || '').toLowerCase();
+
     let originGeo = ROUTE_COORDINATES[load.origin];
-    if (!originGeo) {
+    if (!originGeo && originStr) {
       const key = Object.keys(ROUTE_COORDINATES).find(k => 
-        k.toLowerCase().includes(load.origin.toLowerCase()) || 
-        load.origin.toLowerCase().includes(k.toLowerCase())
+        k.toLowerCase().includes(originStr) || 
+        originStr.includes(k.toLowerCase())
       );
       if (key) originGeo = ROUTE_COORDINATES[key];
     }
     
     let destGeo = ROUTE_COORDINATES[load.destination];
-    if (!destGeo) {
+    if (!destGeo && destStr) {
       const key = Object.keys(ROUTE_COORDINATES).find(k => 
-        k.toLowerCase().includes(load.destination.toLowerCase()) || 
-        load.destination.toLowerCase().includes(k.toLowerCase())
+        k.toLowerCase().includes(destStr) || 
+        destStr.includes(k.toLowerCase())
       );
       if (key) destGeo = ROUTE_COORDINATES[key];
     }
@@ -1419,25 +1422,27 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
       lat: -16.01515, 
       lng: -47.98503, 
       address: 'DVA ATACADOS EIRELI, Trecho 2, Conjunto 8 lote 17 - Santa Maria, Brasília - DF', 
-      label: load.origin 
+      label: load.origin || 'Origem'
     };
     const defaultDest = { 
       lat: -15.7953, 
       lng: -47.9622, 
-      address: load.destination, 
-      label: load.destination 
+      address: load.destination || 'Destino', 
+      label: load.destination || 'Destino'
     };
 
     const originPoint = originGeo || defaultOrigin;
     const destPoint = destGeo || defaultDest;
 
     const additionalPoints = (load.cargoType === CargoType.COMPARTILHADA ? (load.additionalDestinations || []) : [])
+      .filter((d): d is string => typeof d === 'string' && d.trim() !== '')
       .map(d => {
         let geo = ROUTE_COORDINATES[d];
-        if (!geo) {
+        const dLower = d.toLowerCase();
+        if (!geo && dLower) {
           const key = Object.keys(ROUTE_COORDINATES).find(k => 
-            k.toLowerCase().includes(d.toLowerCase()) || 
-            d.toLowerCase().includes(k.toLowerCase())
+            k.toLowerCase().includes(dLower) || 
+            dLower.includes(k.toLowerCase())
           );
           if (key) geo = ROUTE_COORDINATES[key];
         }
