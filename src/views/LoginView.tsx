@@ -49,12 +49,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onR
     return str.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   };
 
-  const handleFillMaster = () => {
-    setUsername('Cleiton');
-    setPassword('361485');
-    setError('');
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -570,27 +564,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onR
 
             {/* Username Input */}
             <div className="space-y-1.5">
-              <label className="text-[10.5px] font-black text-slate-200 uppercase tracking-wider flex items-center justify-between">
+              <label className="text-[10.5px] font-black text-slate-200 uppercase tracking-wider flex items-center">
                 <span className="flex items-center gap-1.5">
                   <UserIcon className="w-3.5 h-3.5 text-primary-gold" />
                   Usuário
                 </span>
-                {mode === 'login' && (
-                  <button 
-                    type="button" 
-                    onClick={handleFillMaster}
-                    className="text-[9.5px] text-primary-gold/90 hover:text-primary-gold font-bold underline transition-colors"
-                  >
-                    Preencher Master Cleiton
-                  </button>
-                )}
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-4 py-3.5 text-sm font-bold text-white focus:ring-2 focus:ring-primary-gold focus:border-primary-gold outline-none transition-all placeholder:text-slate-500 placeholder:font-normal shadow-inner"
-                placeholder="Ex: Cleiton"
+                placeholder="Digite seu usuário"
                 autoComplete="username"
                 required
               />
@@ -647,13 +632,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onR
               </button>
             </div>
           </form>
-
-          {/* Card Footer with master user info note */}
-          <div className="p-3.5 bg-slate-950/60 border-t border-slate-800/80 text-center">
-            <p className="text-[9.5px] text-slate-400 font-mono tracking-tight">
-              Acesso Master Administrador: <strong className="text-primary-gold font-bold">Cleiton</strong> • Senha: <strong className="text-primary-gold font-bold">361485</strong>
-            </p>
-          </div>
         </div>
       </div>
 
