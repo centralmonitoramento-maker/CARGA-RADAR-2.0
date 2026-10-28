@@ -1,9 +1,18 @@
 // Local Reactive Database & Auth Service for CargaRadar
-// Seamlessly backed by Firebase Cloud Firestore with offline-first local cache and reactive events.
+// Migrated to Supabase with real-time sync, Firestore fallback, and offline-first local cache.
 
 import { CargoLoad, User, EventLog, SystemRole, OccurrenceType, CargoStatus } from '../types';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { 
+  supabase, 
+  isSupabaseConfigured, 
+  upsertSupabaseLoad, 
+  upsertSupabaseLoads, 
+  deleteSupabaseLoad, 
+  getSupabaseLoads, 
+  subscribeSupabaseLoads 
+} from './supabase';
 
 const STORAGE_KEYS = {
   LOADS: 'cargoradar_loads',
@@ -247,26 +256,40 @@ class LocalDatabase {
     this.isFirestoreInitialized = true;
 
     try {
-      // 1. Loads listener
-      const loadsPath = 'loads';
-      onSnapshot(
-        collection(db, loadsPath),
-        (snapshot) => {
-          if (!snapshot.empty) {
-            const firestoreLoads: CargoLoad[] = [];
-            snapshot.forEach((docSnap) => {
-              const data = docSnap.data() as CargoLoad;
-              firestoreLoads.push(data);
-            });
-            // Update local storage and notify
-            localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(firestoreLoads));
-            this.notify('loads', firestoreLoads);
+      // 1. Loads listener (Supabase Realtime with Firestore fallback)
+      if (isSupabaseConfigured()) {
+        getSupabaseLoads().then(({ data }) => {
+          if (data && data.length > 0) {
+            localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(data));
+            this.notify('loads', data);
           }
-        },
-        (error) => {
-          handleFirestoreError(error, OperationType.GET, loadsPath);
-        }
-      );
+        });
+
+        subscribeSupabaseLoads((liveLoads) => {
+          localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(liveLoads));
+          this.notify('loads', liveLoads);
+        });
+      } else {
+        const loadsPath = 'loads';
+        onSnapshot(
+          collection(db, loadsPath),
+          (snapshot) => {
+            if (!snapshot.empty) {
+              const firestoreLoads: CargoLoad[] = [];
+              snapshot.forEach((docSnap) => {
+                const data = docSnap.data() as CargoLoad;
+                firestoreLoads.push(data);
+              });
+              // Update local storage and notify
+              localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(firestoreLoads));
+              this.notify('loads', firestoreLoads);
+            }
+          },
+          (error) => {
+            handleFirestoreError(error, OperationType.GET, loadsPath);
+          }
+        );
+      }
 
       // 2. Users listener
       const usersPath = 'users';
@@ -409,11 +432,18 @@ class LocalDatabase {
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(loads));
     this.notify('loads', loads);
 
-    // Sync to Firestore with strict sanitization ensuring zero undefined fields
-    const firestorePayload = sanitizeForFirestore(sanitizedLoad);
-    setDoc(doc(db, 'loads', sanitizedLoad.id), firestorePayload, { merge: true }).catch((err) => {
-      handleFirestoreError(err, OperationType.WRITE, `loads/${sanitizedLoad.id}`);
-    });
+    // Sync to Supabase (primary) or fallback to Firestore
+    if (isSupabaseConfigured()) {
+      upsertSupabaseLoad(sanitizedLoad).catch((err) => {
+        console.warn('Erro ao salvar carga no Supabase:', err);
+      });
+    } else {
+      // Sync to Firestore with strict sanitization ensuring zero undefined fields
+      const firestorePayload = sanitizeForFirestore(sanitizedLoad);
+      setDoc(doc(db, 'loads', sanitizedLoad.id), firestorePayload, { merge: true }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `loads/${sanitizedLoad.id}`);
+      });
+    }
 
     return sanitizedLoad;
   }
@@ -430,16 +460,22 @@ class LocalDatabase {
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(sanitizedList));
     this.notify('loads', sanitizedList);
 
-    // Sync batch to Firestore
-    try {
-      sanitizedList.forEach(load => {
-        const firestorePayload = sanitizeForFirestore(load);
-        setDoc(doc(db, 'loads', load.id), firestorePayload, { merge: true }).catch(err => {
-          handleFirestoreError(err, OperationType.WRITE, `loads/${load.id}`);
-        });
+    // Sync batch to Supabase (primary) or fallback to Firestore
+    if (isSupabaseConfigured()) {
+      upsertSupabaseLoads(sanitizedList).catch((err) => {
+        console.warn('Erro ao salvar lote de cargas no Supabase:', err);
       });
-    } catch (err) {
-      console.warn('Erro ao sincronizar lote de cargas no Firestore:', err);
+    } else {
+      try {
+        sanitizedList.forEach(load => {
+          const firestorePayload = sanitizeForFirestore(load);
+          setDoc(doc(db, 'loads', load.id), firestorePayload, { merge: true }).catch(err => {
+            handleFirestoreError(err, OperationType.WRITE, `loads/${load.id}`);
+          });
+        });
+      } catch (err) {
+        console.warn('Erro ao sincronizar lote de cargas no Firestore:', err);
+      }
     }
   }
 
@@ -448,10 +484,16 @@ class LocalDatabase {
     localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(loads));
     this.notify('loads', loads);
 
-    // Delete in Firestore
-    deleteDoc(doc(db, 'loads', loadId)).catch((err) => {
-      handleFirestoreError(err, OperationType.DELETE, `loads/${loadId}`);
-    });
+    // Delete in Supabase (primary) or fallback to Firestore
+    if (isSupabaseConfigured()) {
+      deleteSupabaseLoad(loadId).catch((err) => {
+        console.warn('Erro ao deletar carga no Supabase:', err);
+      });
+    } else {
+      deleteDoc(doc(db, 'loads', loadId)).catch((err) => {
+        handleFirestoreError(err, OperationType.DELETE, `loads/${loadId}`);
+      });
+    }
   }
 
   getLoadById(id: string): CargoLoad | undefined {
