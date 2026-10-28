@@ -65,6 +65,8 @@ export interface CargoLoad {
   occurrenceDescription?: string;
   occurrencePhoto?: string | string[];
   auditedAt?: string;
+  auditedBy?: string;
+  creatorUsername?: string;
   occurrenceHistory?: {
     type: OccurrenceType;
     description: string;
@@ -193,8 +195,8 @@ export const STORE_LOCATIONS_BY_REGION: StoreLocationGroup[] = [
 
 export const LOCATION_OPTIONS = STORE_LOCATIONS_BY_REGION.flatMap(group => group.stores);
 
-const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || 
-                process.env.GOOGLE_MAPS_API_KEY || 
+const mapsKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_MAPS_API_KEY) || 
+                (typeof process !== 'undefined' && process.env?.GOOGLE_MAPS_API_KEY) || 
                 'AIzaSyD8hGoYRyTfMTGiVmbykxBiH3_51EG1HqQ';
 
 export const CD_ROUTES_MAP: Record<string, string> = {

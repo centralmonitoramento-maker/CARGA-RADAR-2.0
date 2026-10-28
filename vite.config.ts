@@ -16,8 +16,11 @@ export default defineConfig(({ mode }) => {
         tailwindcss(),
       ],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'global': 'window',
+        'process.env': JSON.stringify({}),
+        'process.env.NODE_ENV': JSON.stringify(mode === 'production' ? 'production' : 'development'),
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || ''),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || ''),
         'process.env.GOOGLE_MAPS_API_KEY': JSON.stringify(env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8hGoYRyTfMTGiVmbykxBiH3_51EG1HqQ'),
         'process.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(env.VITE_GOOGLE_MAPS_API_KEY || env.GOOGLE_MAPS_API_KEY || 'AIzaSyD8hGoYRyTfMTGiVmbykxBiH3_51EG1HqQ')
       },

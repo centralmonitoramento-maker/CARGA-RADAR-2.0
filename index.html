@@ -10,6 +10,16 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
     </style>
+    <script>
+        // Compatibility shim for libraries requiring Node globals in browser
+        window.global = window.global || window;
+        window.process = window.process || {
+            env: { NODE_ENV: 'production' },
+            stdout: { isTTY: false },
+            stderr: { isTTY: false },
+            nextTick: function(cb) { setTimeout(cb, 0); }
+        };
+    </script>
 </head>
 <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>

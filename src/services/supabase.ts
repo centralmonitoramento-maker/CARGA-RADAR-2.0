@@ -1,16 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
 import { CargoLoad } from '../types';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-
 export const isSupabaseConfigured = (): boolean => {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  return !!url && !!key && url !== 'https://placeholder.supabase.co';
+  const url = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+  const key = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  return !!url && !!key && url.startsWith('http') && !url.includes('placeholder.supabase.co');
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const createSafeSupabaseClient = () => {
+  try {
+    const url = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+    const key = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+    if (url && key && url.startsWith('http')) {
+      return createClient(url, key);
+    }
+    // Safe placeholder client with valid JWT format to prevent crash on module import
+    return createClient(
+      'https://placeholder.supabase.co',
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDM3MzEsImV4cCI6MjA4NjMxOTczMX0.placeholder'
+    );
+  } catch (err) {
+    console.warn('Supabase client failed to initialize safely:', err);
+    return null as any;
+  }
+};
+
+export const supabase = createSafeSupabaseClient();
 
 /**
  * Supabase CRUD Services for Cargo Loads (Cargas)

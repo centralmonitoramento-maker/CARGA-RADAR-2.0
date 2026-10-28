@@ -29,7 +29,7 @@ interface FeedbackMessage {
   text?: string;
   senderName: string;
   senderUsername: string;
-  senderRole: 'expedition' | 'central' | 'audit' | 'analysis' | 'portaria';
+  senderRole: 'expedition' | 'central' | 'audit' | 'analysis' | 'portaria' | 'supervisor_cd' | 'store_app';
   senderRoleLabel: string;
   timestamp: string;
   audio?: string; // base64 string
@@ -37,7 +37,7 @@ interface FeedbackMessage {
   attachment?: string; // base64 string
   attachmentName?: string;
   attachmentType?: string;
-  areaTarget: 'all' | 'expedition' | 'central' | 'audit' | 'analysis' | 'portaria';
+  areaTarget: 'all' | 'expedition' | 'central' | 'audit' | 'analysis' | 'portaria' | 'supervisor_cd' | 'store_app';
   isDirect?: boolean;
   userTarget?: string;
   userTargetName?: string;

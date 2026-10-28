@@ -67,8 +67,8 @@
 
 /* Elegant CSS adaptation layer for rapid dark context transformation without modifying 100 HTML trees */
 .dark .bg-slate-50,
-.dark .bg-slate-100/50,
-.dark .bg-slate-50/50,
+.dark .bg-slate-100\/50,
+.dark .bg-slate-50\/50,
 .dark .bg-slate-100 {
   background-color: var(--bg-app);
 }

@@ -524,7 +524,7 @@ export const ReverseAnalyticsDashboard: React.FC<ReverseAnalyticsDashboardProps>
           <div className="h-[280px] w-full flex items-center justify-center">
             {hasData && timelineData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timelineData} margin={{ top: 10, right: 15, left: -10, bottom: 5 }}>
+                <LineChart data={timelineData as any} margin={{ top: 10, right: 15, left: -10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                   <XAxis 
                     dataKey={dateFilter === 'today' ? 'time' : 'date'} 

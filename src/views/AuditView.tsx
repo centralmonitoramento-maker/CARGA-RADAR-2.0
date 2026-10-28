@@ -55,7 +55,7 @@ interface AuditViewProps {
   loads: CargoLoad[];
   users: User[];
   logs: EventLog[];
-  onUpdateOccurrence: (id: string, type: OccurrenceType, description: string, photo?: string) => void;
+  onUpdateOccurrence: (id: string, type: OccurrenceType, description: string, photo?: string | string[]) => void;
   onApproveUser: (userId: string, approve: boolean) => void;
   onDeleteUser: (userId: string) => void;
   onChangePassword: (userId: string, newPassword: string) => void;
@@ -2039,13 +2039,13 @@ export const AuditView: React.FC<AuditViewProps> = ({
                                 {occ.photo ? (
                                   <div className="relative w-28 h-28 group overflow-hidden rounded-xl border border-slate-200 shadow-sm bg-slate-100 cursor-zoom-in">
                                     <img 
-                                      src={occ.photo} 
+                                      src={Array.isArray(occ.photo) ? occ.photo[0] : occ.photo} 
                                       alt="Foto Evidência" 
                                       className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" 
                                     />
                                     <button
                                       type="button"
-                                      onClick={() => setModalImage(occ.photo || null)}
+                                      onClick={() => setModalImage(Array.isArray(occ.photo) ? (occ.photo[0] || null) : (occ.photo || null))}
                                       className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white"
                                     >
                                       <Maximize2 className="w-3.5 h-3.5" />

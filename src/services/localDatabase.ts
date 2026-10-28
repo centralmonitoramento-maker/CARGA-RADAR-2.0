@@ -256,7 +256,10 @@ class LocalDatabase {
     this.isFirestoreInitialized = true;
 
     try {
-      // 1. Loads listener (Supabase Realtime with Firestore fallback)
+      if (!db) {
+        console.warn('Firestore instance is not initialized. Using local offline cache.');
+        return;
+      }
       if (isSupabaseConfigured()) {
         getSupabaseLoads().then(({ data }) => {
           if (data && data.length > 0) {

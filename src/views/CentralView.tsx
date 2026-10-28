@@ -32,7 +32,6 @@ import {
   UserCheck
 } from 'lucide-react';
 import { getDriversByPlate, DriverLink } from '../data/driversData';
-import { GoogleGenAI } from "@google/genai";
 import { ImageEnhanceZoom } from '../components/ImageEnhanceZoom';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
@@ -1355,11 +1354,13 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
   }, [selectedLoadId]);
 
   const generateRouteSummary = async (load: CargoLoad) => {
-    if (!process.env.GEMINI_API_KEY) return;
+    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '');
+    if (!geminiKey) return;
     
     setIsLoadingSummary(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey: geminiKey });
       const destinations = [load.destination, ...(load.additionalDestinations || [])].join(', ');
       const prompt = `Como um especialista em logística, forneça um resumo executivo curto (máximo 3 linhas) da rota de ${load.origin} para ${destinations}. 
       Inclua: 
@@ -3452,9 +3453,12 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">1. Placa do Veículo</span>
                           <div 
                             className="w-full h-32 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 relative group cursor-pointer" 
-                            onClick={() => setPreviewImage(selectedLoad.photoPlate || null)}
+                            onClick={() => {
+                              const p = Array.isArray(selectedLoad.photoPlate) ? selectedLoad.photoPlate[0] : selectedLoad.photoPlate;
+                              setPreviewImage(p || null);
+                            }}
                           >
-                            <img src={selectedLoad.photoPlate} alt="Placa do Veículo" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            <img src={Array.isArray(selectedLoad.photoPlate) ? selectedLoad.photoPlate[0] : selectedLoad.photoPlate} alt="Placa do Veículo" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <span className="text-[9px] text-white font-black uppercase tracking-widest bg-black/60 px-3 py-1.5 rounded-full">Zoom</span>
                             </div>
@@ -3467,9 +3471,12 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">2. Lacre de Segurança</span>
                           <div 
                             className="w-full h-32 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 relative group cursor-pointer" 
-                            onClick={() => setPreviewImage(selectedLoad.photoSeal || null)}
+                            onClick={() => {
+                              const p = Array.isArray(selectedLoad.photoSeal) ? selectedLoad.photoSeal[0] : selectedLoad.photoSeal;
+                              setPreviewImage(p || null);
+                            }}
                           >
-                            <img src={selectedLoad.photoSeal} alt="Lacre de Segurança" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            <img src={Array.isArray(selectedLoad.photoSeal) ? selectedLoad.photoSeal[0] : selectedLoad.photoSeal} alt="Lacre de Segurança" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <span className="text-[9px] text-white font-black uppercase tracking-widest bg-black/60 px-3 py-1.5 rounded-full">Zoom</span>
                             </div>
@@ -3482,9 +3489,12 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">3. Romaneio / Manifesto</span>
                           <div 
                             className="w-full h-32 rounded-xl overflow-hidden bg-slate-50 border border-slate-100 relative group cursor-pointer" 
-                            onClick={() => setPreviewImage(selectedLoad.photoManifest || null)}
+                            onClick={() => {
+                              const p = Array.isArray(selectedLoad.photoManifest) ? selectedLoad.photoManifest[0] : selectedLoad.photoManifest;
+                              setPreviewImage(p || null);
+                            }}
                           >
-                            <img src={selectedLoad.photoManifest} alt="Romaneio / Manifesto" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            <img src={Array.isArray(selectedLoad.photoManifest) ? selectedLoad.photoManifest[0] : selectedLoad.photoManifest} alt="Romaneio / Manifesto" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                               <span className="text-[9px] text-white font-black uppercase tracking-widest bg-black/60 px-3 py-1.5 rounded-full">Zoom</span>
                             </div>
@@ -4210,10 +4220,13 @@ export const CentralView: React.FC<CentralViewProps> = ({ loads, onUpdateStatus,
                             {occ.photo && (
                               <div 
                                 className="w-20 h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-50 cursor-pointer group relative shrink-0"
-                                onClick={() => setPreviewImage(occ.photo || null)}
+                                onClick={() => {
+                                  const p = Array.isArray(occ.photo) ? occ.photo[0] : occ.photo;
+                                  setPreviewImage(p || null);
+                                }}
                                 title="Expandir imagem"
                               >
-                                <img src={occ.photo} alt="Evidência" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                <img src={Array.isArray(occ.photo) ? occ.photo[0] : occ.photo} alt="Evidência" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                 <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                                   <Camera className="w-4 h-4" />
                                 </div>
