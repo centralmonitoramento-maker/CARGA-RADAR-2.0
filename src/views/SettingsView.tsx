@@ -30,10 +30,15 @@ import {
   Trash2,
   ShieldAlert,
   AlertTriangle,
-  X
+  X,
+  Database,
+  Key,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { User, CargoLoad } from '../types';
 import { localDb } from '../services/localDatabase';
+import { isSupabaseConfigured, getSupabaseConfigStatus } from '../services/supabase';
 import { 
   getGmailToken, 
   getGmailUser, 
@@ -53,6 +58,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, loads }
   const isAdmin = currentUser?.systemRole === 'administrator';
   const [clearAllConfirmModal, setClearAllConfirmModal] = useState<boolean>(false);
   const [clearFeedback, setClearFeedback] = useState<string | null>(null);
+  const [copiedEnvSettings, setCopiedEnvSettings] = useState<boolean>(false);
+  const supabaseStatus = getSupabaseConfigStatus();
 
   const handleConfirmClearAll = async () => {
     try {
@@ -415,6 +422,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, loads }
               <a href="#support" className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-xs font-black uppercase text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
                 <HelpCircle className="w-4 h-4 text-rose-500" />
                 <span>Suporte Técnico</span>
+              </a>
+              <a href="#database" className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-xs font-black uppercase text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
+                <Database className="w-4 h-4 text-blue-500" />
+                <span>Banco de Dados</span>
               </a>
             </div>
           </div>
@@ -1162,6 +1173,111 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, loads }
                     </button>
                   </form>
                 )}
+              </div>
+            </div>
+          </section>
+
+          {/* SEC: DATABASE & SUPABASE STATUS */}
+          <section id="database" className="bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-850 rounded-[32px] p-6 sm:p-8 space-y-6 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-4">
+              <div className="flex items-center gap-2.5">
+                <Database className="w-5 h-5 text-blue-500" />
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-100">
+                  Banco de Dados & Supabase
+                </h3>
+              </div>
+              <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                supabaseStatus.configured 
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' 
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
+              }`}>
+                {supabaseStatus.configured ? (
+                  <>
+                    <Check className="w-3 h-3" />
+                    <span>Conectado (Nuvem)</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-3 h-3" />
+                    <span>Modo Local Seguro</span>
+                  </>
+                )}
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Key className="w-4 h-4 text-primary-gold" />
+                  Status das Variáveis de Ambiente
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 bg-white dark:bg-slate-950 rounded-xl border border-slate-200/50 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-mono text-[10px] text-slate-400 font-bold">VITE_SUPABASE_URL</div>
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-0.5">
+                        {supabaseStatus.hasUrl ? 'Configurada' : 'Não definida'}
+                      </div>
+                    </div>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${
+                      supabaseStatus.hasUrl ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                    }`}>
+                      {supabaseStatus.hasUrl ? 'OK' : 'Ausente'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white dark:bg-slate-950 rounded-xl border border-slate-200/50 dark:border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-mono text-[10px] text-slate-400 font-bold">VITE_SUPABASE_ANON_KEY</div>
+                      <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-0.5">
+                        {supabaseStatus.hasKey ? 'Configurada' : 'Não definida'}
+                      </div>
+                    </div>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${
+                      supabaseStatus.hasKey ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                    }`}>
+                      {supabaseStatus.hasKey ? 'OK' : 'Ausente'}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  {supabaseStatus.message}
+                </p>
+              </div>
+
+              {/* Guia Rápido */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200/60 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <ExternalLink className="w-4 h-4 text-blue-500" />
+                    Onde Cadastrar as Chaves
+                  </h4>
+                  <button
+                    onClick={() => {
+                      const envText = `VITE_SUPABASE_URL=https://seu-projeto.supabase.co\nVITE_SUPABASE_ANON_KEY=sua-chave-anon-aqui`;
+                      navigator.clipboard.writeText(envText);
+                      setCopiedEnvSettings(true);
+                      setTimeout(() => setCopiedEnvSettings(false), 2500);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                  >
+                    {copiedEnvSettings ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedEnvSettings ? 'Copiado!' : 'Copiar Exemplo .env'}</span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-slate-600 dark:text-slate-300 space-y-2 leading-relaxed">
+                  <p>
+                    <strong>No Vercel (Produção):</strong> Acesse seu painel no Vercel &gt; <strong>Settings</strong> &gt; <strong>Environment Variables</strong> e adicione <code className="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">VITE_SUPABASE_URL</code> e <code className="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">VITE_SUPABASE_ANON_KEY</code>. Em seguida, acione um <em>Redeploy</em>.
+                  </p>
+                  <p>
+                    <strong>Localmente:</strong> Adicione as variáveis ao arquivo <code className="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">.env</code> na raiz do projeto.
+                  </p>
+                  <p>
+                    <strong>Tabelas:</strong> Lembre-se de rodar o script <code className="bg-slate-200 dark:bg-slate-800 px-1 py-0.5 rounded font-mono text-[10px]">supabase-schema.sql</code> no <strong>SQL Editor</strong> do painel do Supabase.
+                  </p>
+                </div>
               </div>
             </div>
           </section>

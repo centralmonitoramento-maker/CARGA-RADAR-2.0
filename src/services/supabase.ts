@@ -7,6 +7,20 @@ export const isSupabaseConfigured = (): boolean => {
   return !!url && !!key && url.startsWith('http') && !url.includes('placeholder.supabase.co');
 };
 
+export const getSupabaseConfigStatus = () => {
+  const configured = isSupabaseConfigured();
+  const url = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+  const hasKey = !!(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+  return {
+    configured,
+    hasUrl: !!url,
+    hasKey,
+    message: configured
+      ? 'Supabase conectado e pronto para sincronização em nuvem.'
+      : 'Chaves do Supabase (VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY) não configuradas no ambiente atual.'
+  };
+};
+
 const createSafeSupabaseClient = (): SupabaseClient => {
   try {
     const url = (import.meta.env.VITE_SUPABASE_URL || '').trim();
@@ -31,19 +45,6 @@ const createSafeSupabaseClient = (): SupabaseClient => {
 };
 
 export const supabase = createSafeSupabaseClient();
-
-/**
- * Validates that Supabase credentials are configured.
- * Throws explicit descriptive error if not configured so callers can present it.
- */
-export function requireSupabaseClient(): SupabaseClient {
-  if (!isSupabaseConfigured() || !supabase) {
-    throw new Error(
-      'Banco de dados Supabase não está configurado. Por favor, adicione as variáveis de ambiente VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env para que os dados sejam gravados na nuvem.'
-    );
-  }
-  return supabase;
-}
 
 /**
  * Checks if a Supabase error is caused by a missing table (PGRST205 / 42P01)
@@ -114,8 +115,11 @@ export function formatSupabaseError(error: any, operationName: string): Error {
  * ========================================================================================= */
 
 export async function getSupabaseLoads(): Promise<CargoLoad[]> {
-  const client = requireSupabaseClient();
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return [];
+  }
+
+  const { data, error } = await supabase
     .from('loads')
     .select('*')
     .order('createdAt', { ascending: false });
@@ -132,7 +136,6 @@ export async function getSupabaseLoads(): Promise<CargoLoad[]> {
 }
 
 export async function upsertSupabaseLoad(load: CargoLoad): Promise<CargoLoad> {
-  const client = requireSupabaseClient();
   const sanitized = sanitizeForSupabase({
     ...load,
     driverPhone: typeof load.driverPhone === 'string' ? load.driverPhone : (load.driverPhone ?? ''),
@@ -143,13 +146,23 @@ export async function upsertSupabaseLoad(load: CargoLoad): Promise<CargoLoad> {
     sealNumber: load.sealNumber || '',
   });
 
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    // Modo local seguro: não lança erro fatal caso as credenciais não estejam no ambiente
+    console.info('[Supabase] Credenciais não configuradas. Carga gravada no cache local com sucesso.');
+    return sanitized;
+  }
+
+  const { data, error } = await supabase
     .from('loads')
     .upsert(sanitized, { onConflict: 'id' })
     .select()
     .single();
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "public.loads" pendente no Supabase. Carga gravada localmente.');
+      return sanitized;
+    }
     throw formatSupabaseError(error, `salvar carga (Placa: ${load.plate || load.id})`);
   }
 
@@ -157,7 +170,6 @@ export async function upsertSupabaseLoad(load: CargoLoad): Promise<CargoLoad> {
 }
 
 export async function upsertSupabaseLoads(loads: CargoLoad[]): Promise<CargoLoad[]> {
-  const client = requireSupabaseClient();
   if (!loads || loads.length === 0) return [];
 
   const sanitized = loads.map(load => sanitizeForSupabase({
@@ -170,12 +182,21 @@ export async function upsertSupabaseLoads(loads: CargoLoad[]): Promise<CargoLoad
     sealNumber: load.sealNumber || '',
   }));
 
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    console.info('[Supabase] Credenciais não configuradas. Lote gravado no cache local.');
+    return sanitized;
+  }
+
+  const { data, error } = await supabase
     .from('loads')
     .upsert(sanitized, { onConflict: 'id' })
     .select();
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "public.loads" pendente no Supabase. Lote gravado localmente.');
+      return sanitized;
+    }
     throw formatSupabaseError(error, 'salvar lote de cargas');
   }
 
@@ -183,13 +204,19 @@ export async function upsertSupabaseLoads(loads: CargoLoad[]): Promise<CargoLoad
 }
 
 export async function deleteSupabaseLoad(loadId: string): Promise<void> {
-  const client = requireSupabaseClient();
-  const { error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return;
+  }
+
+  const { error } = await supabase
     .from('loads')
     .delete()
     .eq('id', loadId);
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      return;
+    }
     throw formatSupabaseError(error, `excluir carga (${loadId})`);
   }
 }
@@ -225,8 +252,11 @@ export function subscribeSupabaseLoads(onLoadsChanged: (loads: CargoLoad[]) => v
  * ========================================================================================= */
 
 export async function getSupabaseUsers(): Promise<User[] | null> {
-  const client = requireSupabaseClient();
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
     .from('users')
     .select('*')
     .order('createdAt', { ascending: false });
@@ -243,7 +273,6 @@ export async function getSupabaseUsers(): Promise<User[] | null> {
 }
 
 export async function upsertSupabaseUser(user: User): Promise<User> {
-  const client = requireSupabaseClient();
   const sanitized = sanitizeForSupabase({
     ...user,
     username: user.username?.trim(),
@@ -252,7 +281,11 @@ export async function upsertSupabaseUser(user: User): Promise<User> {
     createdAt: user.createdAt || new Date().toISOString()
   });
 
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return sanitized;
+  }
+
+  const { data, error } = await supabase
     .from('users')
     .upsert(sanitized, { onConflict: 'id' })
     .select()
@@ -270,10 +303,13 @@ export async function upsertSupabaseUser(user: User): Promise<User> {
 }
 
 export async function updateSupabaseUser(userId: string, partial: Partial<User>): Promise<void> {
-  const client = requireSupabaseClient();
+  if (!isSupabaseConfigured() || !supabase) {
+    return;
+  }
+
   const sanitized = sanitizeForSupabase(partial);
 
-  const { error } = await client
+  const { error } = await supabase
     .from('users')
     .update(sanitized)
     .eq('id', userId);
@@ -288,15 +324,17 @@ export async function updateSupabaseUser(userId: string, partial: Partial<User>)
 }
 
 export async function deleteSupabaseUser(userId: string): Promise<void> {
-  const client = requireSupabaseClient();
-  const { error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return;
+  }
+
+  const { error } = await supabase
     .from('users')
     .delete()
     .eq('id', userId);
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.warn('[Supabase] Tabela "users" ainda não criada no Supabase. Exclusão efetuada localmente.');
       return;
     }
     throw formatSupabaseError(error, `excluir usuário (${userId})`);
@@ -336,8 +374,11 @@ export function subscribeSupabaseUsers(onUsersChanged: (users: User[]) => void):
  * ========================================================================================= */
 
 export async function getSupabaseLogs(): Promise<EventLog[] | null> {
-  const client = requireSupabaseClient();
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
     .from('logs')
     .select('*')
     .order('timestamp', { ascending: false })
@@ -345,7 +386,6 @@ export async function getSupabaseLogs(): Promise<EventLog[] | null> {
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.info('[Supabase] Tabela "public.logs" ainda não existe no Supabase. Utilizando armazenamento local para auditoria.');
       return null;
     }
     throw formatSupabaseError(error, 'consultar logs de auditoria');
@@ -355,7 +395,6 @@ export async function getSupabaseLogs(): Promise<EventLog[] | null> {
 }
 
 export async function insertSupabaseLog(log: EventLog): Promise<EventLog> {
-  const client = requireSupabaseClient();
   const sanitized = sanitizeForSupabase({
     ...log,
     timestamp: log.timestamp || new Date().toISOString(),
@@ -366,7 +405,11 @@ export async function insertSupabaseLog(log: EventLog): Promise<EventLog> {
     userId: log.userId || ''
   });
 
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return sanitized;
+  }
+
+  const { data, error } = await supabase
     .from('logs')
     .upsert(sanitized, { onConflict: 'id' })
     .select()
@@ -374,7 +417,6 @@ export async function insertSupabaseLog(log: EventLog): Promise<EventLog> {
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.warn('[Supabase] Tabela "public.logs" não existe no Supabase. Log registrado localmente.');
       return sanitized;
     }
     throw formatSupabaseError(error, 'registrar log de auditoria');
@@ -384,8 +426,11 @@ export async function insertSupabaseLog(log: EventLog): Promise<EventLog> {
 }
 
 export async function deleteSupabaseLog(logId: string): Promise<void> {
-  const client = requireSupabaseClient();
-  const { error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return;
+  }
+
+  const { error } = await supabase
     .from('logs')
     .delete()
     .eq('id', logId);
@@ -399,8 +444,11 @@ export async function deleteSupabaseLog(logId: string): Promise<void> {
 }
 
 export async function clearSupabaseLogs(): Promise<void> {
-  const client = requireSupabaseClient();
-  const { error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return;
+  }
+
+  const { error } = await supabase
     .from('logs')
     .delete()
     .neq('id', 'placeholder_keep_none');
@@ -446,8 +494,11 @@ export function subscribeSupabaseLogs(onLogsChanged: (logs: EventLog[]) => void)
  * ========================================================================================= */
 
 export async function getSupabaseSettings(): Promise<Record<string, any> | null> {
-  const client = requireSupabaseClient();
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
     .from('settings')
     .select('*')
     .eq('id', 'system_config')
@@ -455,7 +506,6 @@ export async function getSupabaseSettings(): Promise<Record<string, any> | null>
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.info('[Supabase] Tabela "public.settings" ainda não existe no Supabase. Utilizando configurações locais.');
       return null;
     }
     throw formatSupabaseError(error, 'consultar configurações do sistema');
@@ -465,20 +515,22 @@ export async function getSupabaseSettings(): Promise<Record<string, any> | null>
 }
 
 export async function upsertSupabaseSettings(settings: Record<string, any>): Promise<void> {
-  const client = requireSupabaseClient();
+  if (!isSupabaseConfigured() || !supabase) {
+    return;
+  }
+
   const sanitized = sanitizeForSupabase({
     id: 'system_config',
     ...settings,
     updatedAt: new Date().toISOString()
   });
 
-  const { error } = await client
+  const { error } = await supabase
     .from('settings')
     .upsert(sanitized, { onConflict: 'id' });
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.warn('[Supabase] Tabela "public.settings" não encontrada no Supabase. Configuração salva localmente.');
       return;
     }
     throw formatSupabaseError(error, 'salvar configurações do sistema');
@@ -518,15 +570,17 @@ export function subscribeSupabaseSettings(onSettingsChanged: (settings: Record<s
  * ========================================================================================= */
 
 export async function getSupabaseFeedbacks(): Promise<any[] | null> {
-  const client = requireSupabaseClient();
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return null;
+  }
+
+  const { data, error } = await supabase
     .from('feedbacks')
     .select('*')
     .order('timestamp', { ascending: true });
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.info('[Supabase] Tabela "public.feedbacks" ainda não existe no Supabase. Utilizando feedbacks locais.');
       return null;
     }
     throw formatSupabaseError(error, 'consultar mensagens de feedback');
@@ -536,10 +590,13 @@ export async function getSupabaseFeedbacks(): Promise<any[] | null> {
 }
 
 export async function insertSupabaseFeedback(feedback: any): Promise<any> {
-  const client = requireSupabaseClient();
   const sanitized = sanitizeForSupabase(feedback);
 
-  const { data, error } = await client
+  if (!isSupabaseConfigured() || !supabase) {
+    return sanitized;
+  }
+
+  const { data, error } = await supabase
     .from('feedbacks')
     .upsert(sanitized, { onConflict: 'id' })
     .select()
@@ -547,7 +604,6 @@ export async function insertSupabaseFeedback(feedback: any): Promise<any> {
 
   if (error) {
     if (isTableNotFoundError(error)) {
-      console.warn('[Supabase] Tabela "public.feedbacks" não existe no Supabase. Mensagem gravada localmente.');
       return sanitized;
     }
     throw formatSupabaseError(error, 'enviar mensagem de feedback');

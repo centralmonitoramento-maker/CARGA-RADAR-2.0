@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
-import { Keyboard, HelpCircle, X, Sparkles, CloudOff, RefreshCw, AlertCircle } from 'lucide-react';
+import { Keyboard, HelpCircle, X, Sparkles, CloudOff, RefreshCw, AlertCircle, Database, Key, Copy, Check, ExternalLink } from 'lucide-react';
 import { ExpeditionView } from './views/ExpeditionView';
 import { CentralView } from './views/CentralView';
 import { AuditView } from './views/AuditView';
@@ -16,6 +16,7 @@ import { CargoLoad, CargoStatus, CargoType, OccurrenceType, User, EventLog, Syst
 import { getGmailToken, sendGmailEmail } from './utils/gmailService';
 import { capLoadDocumentSize } from './utils/imageCompressor';
 import { localDb, generateLocalId } from './services/localDatabase';
+import { isSupabaseConfigured } from './services/supabase';
 
 type TabType = 'supervisor_cd' | 'expedition' | 'central' | 'audit' | 'analysis' | 'portaria' | 'settings' | 'reverse_transfer' | 'guide';
 
@@ -53,6 +54,27 @@ const App: React.FC = () => {
   const [shortcutFeedback, setShortcutFeedback] = useState<string | null>(null);
   const [showShortcutHelp, setShowShortcutHelp] = useState<boolean>(false);
   const [supabaseErrorMessage, setSupabaseErrorMessage] = useState<string | null>(null);
+
+  // Supabase Configuration Status & Setup Modal
+  const isSupabaseLive = isSupabaseConfigured();
+  const [showSupabaseSetupModal, setShowSupabaseSetupModal] = useState<boolean>(false);
+  const [copiedEnv, setCopiedEnv] = useState<boolean>(false);
+  const [dismissedSupabaseBanner, setDismissedSupabaseBanner] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cargoradar_dismiss_supabase_banner') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleDismissSupabaseBanner = () => {
+    setDismissedSupabaseBanner(true);
+    try {
+      localStorage.setItem('cargoradar_dismiss_supabase_banner', 'true');
+    } catch {
+      // ignore
+    }
+  };
 
 const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit', 'analysis', 'portaria', 'settings', 'reverse_transfer', 'guide'];
 
@@ -997,6 +1019,52 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
       isOffline={isOffline}
       lastSyncTime={lastSyncTime}
     >
+      {/* Friendly Supabase Configuration Advisory Banner when keys are missing */}
+      {!isSupabaseLive && !dismissedSupabaseBanner && (
+        <div className="mb-6 bg-gradient-to-r from-blue-900/30 via-slate-900/40 to-amber-900/20 border-2 border-blue-500/40 dark:border-blue-400/30 rounded-3xl p-5 shadow-2xl relative overflow-hidden text-left animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 z-10 relative">
+            <div className="flex items-start sm:items-center gap-4">
+              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl shrink-0 shadow-lg border border-blue-500/30">
+                <Database className="w-6 h-6 animate-pulse text-blue-400" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-xs sm:text-sm font-black uppercase text-blue-300 dark:text-blue-200 tracking-wider">
+                    Supabase em Modo Local (Chaves Pendentes)
+                  </h4>
+                  <span className="bg-emerald-500/20 text-emerald-400 text-[9px] font-black px-2.5 py-0.5 rounded-full border border-emerald-500/30 uppercase tracking-widest flex items-center gap-1">
+                    <Check className="w-2.5 h-2.5" /> Gravação Segura Ativa
+                  </span>
+                </div>
+                <p className="text-[11px] font-medium text-slate-300 leading-relaxed max-w-3xl">
+                  As variáveis <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono text-[10px]">VITE_SUPABASE_URL</code> e <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300 font-mono text-[10px]">VITE_SUPABASE_ANON_KEY</code> não foram detectadas no ambiente. Todas as operações de criação de cargas, edição e autorização estão funcionando normalmente com armazenamento local seguro neste navegador.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto justify-end">
+              <button
+                onClick={() => setShowSupabaseSetupModal(true)}
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg hover:shadow-blue-500/25 border border-blue-400/40"
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span>Onde Cadastrar as Chaves</span>
+              </button>
+              <button
+                onClick={handleDismissSupabaseBanner}
+                className="px-3.5 py-2.5 bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/80 rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Dispensar este aviso"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Dispensar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Supabase Error Alert Banner */}
       {supabaseErrorMessage && (
         <div className="mb-6 bg-red-500/10 dark:bg-red-500/15 border-2 border-red-500/50 rounded-3xl p-5 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-6 duration-300 text-left">
@@ -1201,6 +1269,113 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
               <button
                 onClick={() => setShowShortcutHelp(false)}
                 className="px-5 py-2.5 bg-primary-gold hover:bg-primary-gold/90 text-white text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-lg"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Como Configurar o Supabase no Vercel ou Localmente */}
+      {showSupabaseSetupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl relative text-left max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setShowSupabaseSetupModal(false)}
+              className="absolute top-5 right-5 p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3.5 mb-5">
+              <div className="p-3 bg-blue-500/20 text-blue-400 rounded-2xl border border-blue-500/30">
+                <Database className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-white uppercase tracking-tight">
+                  Como Configurar o Supabase
+                </h3>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Guia passo a passo para conectar o banco de dados na nuvem
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-6 text-xs text-slate-300">
+              {/* Onde cadastrar no Vercel */}
+              <div className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800 space-y-3">
+                <div className="flex items-center gap-2 text-primary-gold font-black uppercase text-[11px]">
+                  <ExternalLink className="w-4 h-4" />
+                  <span>1. Se Hospedado no Vercel (Produção)</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
+                  <li>Acesse o painel do seu projeto no <strong>vercel.com</strong>.</li>
+                  <li>Clique na aba <strong>Settings</strong> e depois em <strong>Environment Variables</strong> no menu lateral.</li>
+                  <li>Cadastre as duas variáveis abaixo para todos os ambientes (Production, Preview, Development):</li>
+                </ol>
+
+                <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-2 font-mono text-[10px]">
+                  <div className="flex items-center justify-between text-slate-300">
+                    <div>
+                      <span className="text-blue-400 font-bold">VITE_SUPABASE_URL</span> = <span className="text-slate-400">https://seu-projeto.supabase.co</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <div>
+                      <span className="text-blue-400 font-bold">VITE_SUPABASE_ANON_KEY</span> = <span className="text-slate-400">eyJhbGciOi... (chave pública anon)</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-amber-400/90 font-medium">
+                  * Dica: Após adicionar as variáveis no Vercel, vá em <strong>Deployments</strong> e faça um <strong>Redeploy</strong> para aplicar as novas chaves.
+                </p>
+              </div>
+
+              {/* Onde cadastrar Localmente (.env) */}
+              <div className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-400 font-black uppercase text-[11px]">
+                    <Key className="w-4 h-4" />
+                    <span>2. Em Ambiente Local (Arquivo .env)</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const envText = `VITE_SUPABASE_URL=https://seu-projeto.supabase.co\nVITE_SUPABASE_ANON_KEY=sua-chave-anon-aqui`;
+                      navigator.clipboard.writeText(envText);
+                      setCopiedEnv(true);
+                      setTimeout(() => setCopiedEnv(false), 2500);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                  >
+                    {copiedEnv ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedEnv ? 'Copiado!' : 'Copiar Exemplo'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Crie ou edite o arquivo <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-300 font-mono text-[10px]">.env</code> na raiz do projeto:
+                </p>
+                <pre className="bg-slate-900 p-3 rounded-xl border border-slate-800 font-mono text-[10px] text-slate-300 overflow-x-auto">
+{`VITE_SUPABASE_URL=https://seu-id.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOi...sua-chave-anon`}
+                </pre>
+              </div>
+
+              {/* Onde encontrar as chaves no Supabase */}
+              <div className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800 space-y-2">
+                <h4 className="text-primary-gold font-black uppercase text-[11px]">
+                  Onde encontrar essas chaves no Supabase?
+                </h4>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  No painel do Supabase (<a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">supabase.com/dashboard</a>), selecione seu projeto e clique no menu <strong>Project Settings (ícone de engrenagem)</strong> &gt; <strong>API</strong>. Lá você encontrará a <strong>Project URL</strong> e a chave <strong>anon public</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setShowSupabaseSetupModal(false)}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg"
               >
                 Entendido
               </button>
