@@ -1,9 +1,10 @@
 // Reactive Database & Auth Service for CargaRadar 2.0
-// Exclusively powered by Supabase with synchronous cloud writes, real-time sync, and reactive listeners.
+// Powered by Supabase with synchronous cloud writes for loads, graceful table checking, and reactive listeners.
 
 import { CargoLoad, User, EventLog, OccurrenceType, CargoStatus } from '../types';
 import { 
   isSupabaseConfigured,
+  isTableNotFoundError,
   getSupabaseLoads,
   upsertSupabaseLoad, 
   upsertSupabaseLoads, 
@@ -181,6 +182,14 @@ class LocalDatabase {
       const storedUsers = localStorage.getItem(STORAGE_KEYS.USERS);
       if (!storedUsers || JSON.parse(storedUsers).length === 0) {
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
+      } else {
+        // Garantir que o usuário master Cleiton esteja sempre presente no cache local
+        const parsed: User[] = JSON.parse(storedUsers);
+        const cleiton = parsed.find(u => normalizeStr(u.username) === 'CLEITON');
+        if (!cleiton) {
+          parsed.unshift(DEFAULT_USERS[0]);
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsed));
+        }
       }
 
       if (!localStorage.getItem(STORAGE_KEYS.LOADS)) {
@@ -212,7 +221,7 @@ class LocalDatabase {
 
     if (!isSupabaseConfigured()) {
       console.warn(
-        '[CargaRadar] Supabase não está configurado no ambiente. Para salvar e carregar dados na nuvem, configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.'
+        '[CargaRadar] Supabase não está configurado no ambiente. Para salvar dados na nuvem, configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.'
       );
       return;
     }
@@ -220,40 +229,50 @@ class LocalDatabase {
     try {
       console.log('[CargaRadar] Conectando diretamente ao Supabase...');
 
-      // 1. SINCRONIZAR USUÁRIOS
-      try {
-        const remoteUsers = await getSupabaseUsers();
-        if (remoteUsers && remoteUsers.length > 0) {
-          // Garantir que Cleiton sempre exista e esteja ativo
-          const cleitonFound = remoteUsers.some(u => normalizeStr(u.username) === 'CLEITON');
-          if (!cleitonFound) {
-            await upsertSupabaseUser(DEFAULT_USERS[0]);
-            remoteUsers.unshift(DEFAULT_USERS[0]);
-          }
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(remoteUsers));
-          this.notify('users', remoteUsers);
-        } else {
-          // Se a tabela estiver vazia, semeia o usuário master Cleiton e padrões no Supabase
-          console.log('[CargaRadar] Semeando usuários padrão no Supabase...');
-          for (const defUser of DEFAULT_USERS) {
-            await upsertSupabaseUser(defUser);
-          }
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
-          this.notify('users', DEFAULT_USERS);
-        }
-      } catch (err: any) {
-        console.error('[CargaRadar] Falha ao carregar usuários do Supabase:', err.message);
-      }
-
-      // 2. SINCRONIZAR CARGAS
+      // 1. SINCRONIZAR CARGAS (Tabela 'loads' - já existente no Supabase)
       try {
         const remoteLoads = await getSupabaseLoads();
         if (remoteLoads) {
           localStorage.setItem(STORAGE_KEYS.LOADS, JSON.stringify(remoteLoads));
           this.notify('loads', remoteLoads);
+          console.log(`[CargaRadar] ${remoteLoads.length} cargas sincronizadas do Supabase com sucesso.`);
         }
       } catch (err: any) {
-        console.error('[CargaRadar] Falha ao carregar cargas do Supabase:', err.message);
+        console.warn('[CargaRadar] Aviso ao carregar cargas do Supabase:', err.message);
+      }
+
+      // 2. SINCRONIZAR USUÁRIOS
+      try {
+        const remoteUsers = await getSupabaseUsers();
+        if (remoteUsers && remoteUsers.length > 0) {
+          const cleitonFound = remoteUsers.some(u => normalizeStr(u.username) === 'CLEITON');
+          if (!cleitonFound) {
+            try {
+              await upsertSupabaseUser(DEFAULT_USERS[0]);
+            } catch (e) {
+              // ignore
+            }
+            remoteUsers.unshift(DEFAULT_USERS[0]);
+          }
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(remoteUsers));
+          this.notify('users', remoteUsers);
+        } else if (remoteUsers !== null) {
+          // Tabela existe e está vazia: semear
+          for (const defUser of DEFAULT_USERS) {
+            try {
+              await upsertSupabaseUser(defUser);
+            } catch (e) {
+              // ignore
+            }
+          }
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(DEFAULT_USERS));
+          this.notify('users', DEFAULT_USERS);
+        } else {
+          // Tabela 'users' ainda não foi criada no Supabase (PGRST205)
+          this.notify('users', this.getUsers());
+        }
+      } catch (err: any) {
+        console.warn('[CargaRadar] Tabela "users" pendente no Supabase:', err.message);
       }
 
       // 3. SINCRONIZAR LOGS DE AUDITORIA
@@ -264,7 +283,7 @@ class LocalDatabase {
           this.notify('logs', remoteLogs);
         }
       } catch (err: any) {
-        console.error('[CargaRadar] Falha ao carregar logs do Supabase:', err.message);
+        console.warn('[CargaRadar] Tabela "logs" pendente no Supabase:', err.message);
       }
 
       // 4. SINCRONIZAR CONFIGURAÇÕES
@@ -275,7 +294,7 @@ class LocalDatabase {
           this.notify('settings', remoteSettings);
         }
       } catch (err: any) {
-        console.error('[CargaRadar] Falha ao carregar configurações do Supabase:', err.message);
+        console.warn('[CargaRadar] Tabela "settings" pendente no Supabase:', err.message);
       }
 
       // 5. SINCRONIZAR FEEDBACKS
@@ -286,7 +305,7 @@ class LocalDatabase {
           this.notify('feedbacks', remoteFeedbacks);
         }
       } catch (err: any) {
-        console.error('[CargaRadar] Falha ao carregar feedbacks do Supabase:', err.message);
+        console.warn('[CargaRadar] Tabela "feedbacks" pendente no Supabase:', err.message);
       }
 
       // 6. INICIAR SUBSCRIÇÕES REALTIME DO SUPABASE
@@ -296,28 +315,36 @@ class LocalDatabase {
       });
 
       subscribeSupabaseUsers((liveUsers) => {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(liveUsers));
-        this.notify('users', liveUsers);
+        if (liveUsers && liveUsers.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(liveUsers));
+          this.notify('users', liveUsers);
+        }
       });
 
       subscribeSupabaseLogs((liveLogs) => {
-        localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(liveLogs));
-        this.notify('logs', liveLogs);
+        if (liveLogs) {
+          localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(liveLogs));
+          this.notify('logs', liveLogs);
+        }
       });
 
       subscribeSupabaseSettings((liveSettings) => {
-        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(liveSettings));
-        this.notify('settings', liveSettings);
+        if (liveSettings) {
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(liveSettings));
+          this.notify('settings', liveSettings);
+        }
       });
 
       subscribeSupabaseFeedbacks((liveFeedbacks) => {
-        localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(liveFeedbacks));
-        this.notify('feedbacks', liveFeedbacks);
+        if (liveFeedbacks) {
+          localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(liveFeedbacks));
+          this.notify('feedbacks', liveFeedbacks);
+        }
       });
 
-      console.log('[CargaRadar] Sincronização e Realtime do Supabase estabelecidos com sucesso!');
+      console.log('[CargaRadar] Sistema Supabase conectado e operacional.');
     } catch (err) {
-      console.error('[CargaRadar] Falha geral ao inicializar Supabase:', err);
+      console.warn('[CargaRadar] Falha durante sincronização inicial:', err);
     }
   }
 
@@ -543,31 +570,49 @@ class LocalDatabase {
    * Salva/Cadastra um usuário diretamente no Supabase antes de atualizar o estado local.
    */
   async saveUser(user: User): Promise<User> {
-    // 1. Grava diretamente e de forma síncrona no Supabase
-    const savedInCloud = await upsertSupabaseUser(user);
-
-    // 2. Atualiza estado local
-    const users = this.getUsers();
-    const index = users.findIndex(u => u.id === savedInCloud.id);
-    if (index >= 0) {
-      users[index] = { ...users[index], ...savedInCloud };
-    } else {
-      users.push(savedInCloud);
+    try {
+      const savedInCloud = await upsertSupabaseUser(user);
+      const users = this.getUsers();
+      const index = users.findIndex(u => u.id === savedInCloud.id);
+      if (index >= 0) {
+        users[index] = { ...users[index], ...savedInCloud };
+      } else {
+        users.push(savedInCloud);
+      }
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      this.notify('users', users);
+      return savedInCloud;
+    } catch (err: any) {
+      if (isTableNotFoundError(err)) {
+        console.warn('[CargaRadar] Tabela "users" pendente no Supabase. Salvando localmente.');
+        const users = this.getUsers();
+        const index = users.findIndex(u => u.id === user.id);
+        if (index >= 0) {
+          users[index] = { ...users[index], ...user };
+        } else {
+          users.push(user);
+        }
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+        this.notify('users', users);
+        return user;
+      }
+      throw err;
     }
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-    this.notify('users', users);
-
-    return savedInCloud;
   }
 
   /**
    * Atualiza permissões ou dados do usuário diretamente no Supabase.
    */
   async updateUser(userId: string, partial: Partial<User>): Promise<User | null> {
-    // 1. Atualiza diretamente no Supabase
-    await updateSupabaseUser(userId, partial);
+    try {
+      await updateSupabaseUser(userId, partial);
+    } catch (err: any) {
+      if (!isTableNotFoundError(err)) {
+        throw err;
+      }
+      console.warn('[CargaRadar] Tabela "users" pendente no Supabase. Atualizando localmente.');
+    }
 
-    // 2. Atualiza estado local
     const users = this.getUsers();
     const index = users.findIndex(u => u.id === userId);
     if (index >= 0) {
@@ -583,17 +628,22 @@ class LocalDatabase {
    * Exclui usuário do Supabase.
    */
   async deleteUser(userId: string): Promise<void> {
-    // 1. Exclui diretamente no Supabase
-    await deleteSupabaseUser(userId);
+    try {
+      await deleteSupabaseUser(userId);
+    } catch (err: any) {
+      if (!isTableNotFoundError(err)) {
+        throw err;
+      }
+      console.warn('[CargaRadar] Tabela "users" pendente no Supabase. Excluindo localmente.');
+    }
 
-    // 2. Atualiza estado local
     const users = this.getUsers().filter(u => u.id !== userId);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
     this.notify('users', users);
   }
 
   /**
-   * Solicitação de novo cadastro de usuário - grava diretamente no Supabase
+   * Solicitação de novo cadastro de usuário - grava no Supabase ou retém localmente
    */
   async register(userData: Omit<User, 'id' | 'createdAt'>): Promise<{ success: boolean; message: string; user?: User }> {
     const users = this.getUsers();
@@ -608,9 +658,8 @@ class LocalDatabase {
       createdAt: new Date().toISOString()
     };
 
-    // Grava de forma síncrona no Supabase
     const saved = await this.saveUser(newUser);
-    return { success: true, message: 'Cadastro enviado para aprovação no Supabase.', user: saved };
+    return { success: true, message: 'Cadastro enviado para aprovação.', user: saved };
   }
 
   subscribeUsers(callback: (users: User[]) => void): () => void {
@@ -646,10 +695,15 @@ class LocalDatabase {
       userId: userId || ''
     };
 
-    // 1. Grava no Supabase
-    const savedInCloud = await insertSupabaseLog(newLog);
+    let savedInCloud = newLog;
+    try {
+      savedInCloud = await insertSupabaseLog(newLog);
+    } catch (err: any) {
+      if (!isTableNotFoundError(err)) {
+        console.warn('[CargaRadar] Aviso ao gravar log no Supabase:', err.message);
+      }
+    }
 
-    // 2. Atualiza estado local
     const logs = this.getLogs();
     logs.unshift(savedInCloud);
     const trimmed = logs.slice(0, 500);
@@ -682,10 +736,15 @@ class LocalDatabase {
     const current = this.getSettings();
     const merged = { ...current, ...settings };
 
-    // 1. Grava no Supabase
-    await upsertSupabaseSettings(merged);
+    try {
+      await upsertSupabaseSettings(merged);
+    } catch (err: any) {
+      if (!isTableNotFoundError(err)) {
+        throw err;
+      }
+      console.warn('[CargaRadar] Tabela "settings" pendente no Supabase. Salvo localmente.');
+    }
 
-    // 2. Atualiza estado local
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
     this.notify('settings', merged);
   }
@@ -710,16 +769,22 @@ class LocalDatabase {
   }
 
   async saveFeedback(msg: any): Promise<any> {
-    // 1. Grava no Supabase
-    const savedInCloud = await insertSupabaseFeedback(msg);
+    let savedMsg = msg;
+    try {
+      savedMsg = await insertSupabaseFeedback(msg);
+    } catch (err: any) {
+      if (!isTableNotFoundError(err)) {
+        throw err;
+      }
+      console.warn('[CargaRadar] Tabela "feedbacks" pendente no Supabase. Salvo localmente.');
+    }
 
-    // 2. Atualiza estado local
     const list = this.getFeedbacks();
-    list.push(savedInCloud);
+    list.push(savedMsg);
     localStorage.setItem(STORAGE_KEYS.FEEDBACKS, JSON.stringify(list));
     this.notify('feedbacks', list);
 
-    return savedInCloud;
+    return savedMsg;
   }
 
   subscribeFeedbacks(callback: (feedbacks: any[]) => void): () => void {

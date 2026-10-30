@@ -46,6 +46,16 @@ export function requireSupabaseClient(): SupabaseClient {
 }
 
 /**
+ * Checks if a Supabase error is caused by a missing table (PGRST205 / 42P01)
+ */
+export function isTableNotFoundError(error: any): boolean {
+  if (!error) return false;
+  const code = error?.code || '';
+  const message = error?.message || '';
+  return code === 'PGRST205' || code === '42P01' || message.includes('schema cache') || message.includes('does not exist');
+}
+
+/**
  * Sanitizes object by removing `undefined` and converting them to `null` or valid JSON types
  * to avoid Postgres/Supabase syntax or unsupported value errors.
  */
@@ -82,8 +92,8 @@ export function formatSupabaseError(error: any, operationName: string): Error {
   const hint = error?.hint || '';
 
   let userFriendly = `[Supabase] Erro ao ${operationName}: ${message}`;
-  if (code === '42P01') {
-    userFriendly = `[Supabase] Tabela necessária não encontrada no banco. Crie a tabela no seu projeto Supabase (${message}).`;
+  if (isTableNotFoundError(error)) {
+    userFriendly = `[Supabase] A tabela necessária ainda não existe no seu projeto (${message}). Execute o script 'supabase-schema.sql' no SQL Editor do painel do Supabase.`;
   } else if (code === '42501') {
     userFriendly = `[Supabase] Permissão negada pelas regras de RLS (Row Level Security). Revise as permissões da tabela no painel do Supabase.`;
   } else if (code === '23505') {
@@ -92,10 +102,10 @@ export function formatSupabaseError(error: any, operationName: string): Error {
     userFriendly = `[Supabase] Nenhum registro retornado para a operação solicitada.`;
   }
 
-  if (details) userFriendly += ` Detalhes: ${details}.`;
-  if (hint) userFriendly += ` Sugestão: ${hint}.`;
+  if (details && !isTableNotFoundError(error)) userFriendly += ` Detalhes: ${details}.`;
+  if (hint && !isTableNotFoundError(error)) userFriendly += ` Sugestão: ${hint}.`;
 
-  console.error(`Falha no Supabase [${operationName}]:`, error);
+  console.warn(`[Supabase ${operationName}]:`, error);
   return new Error(userFriendly);
 }
 
@@ -111,6 +121,10 @@ export async function getSupabaseLoads(): Promise<CargoLoad[]> {
     .order('createdAt', { ascending: false });
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "public.loads" não encontrada no Supabase. Crie-a via SQL Editor.');
+      return [];
+    }
     throw formatSupabaseError(error, 'consultar cargas');
   }
 
@@ -210,7 +224,7 @@ export function subscribeSupabaseLoads(onLoadsChanged: (loads: CargoLoad[]) => v
  * 2. USERS (USUÁRIOS E AUTORIZAÇÃO) - SUPABASE CRUD & REALTIME
  * ========================================================================================= */
 
-export async function getSupabaseUsers(): Promise<User[]> {
+export async function getSupabaseUsers(): Promise<User[] | null> {
   const client = requireSupabaseClient();
   const { data, error } = await client
     .from('users')
@@ -218,6 +232,10 @@ export async function getSupabaseUsers(): Promise<User[]> {
     .order('createdAt', { ascending: false });
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.info('[Supabase] Tabela "public.users" ainda não existe no Supabase. Utilizando armazenamento local para autenticação.');
+      return null;
+    }
     throw formatSupabaseError(error, 'consultar lista de usuários');
   }
 
@@ -241,6 +259,10 @@ export async function upsertSupabaseUser(user: User): Promise<User> {
     .single();
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "users" ainda não criada no Supabase. Operação retida localmente.');
+      return sanitized;
+    }
     throw formatSupabaseError(error, `salvar usuário (${user.username})`);
   }
 
@@ -257,6 +279,10 @@ export async function updateSupabaseUser(userId: string, partial: Partial<User>)
     .eq('id', userId);
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "users" ainda não criada no Supabase. Permissão atualizada localmente.');
+      return;
+    }
     throw formatSupabaseError(error, `atualizar permissões do usuário (${userId})`);
   }
 }
@@ -269,6 +295,10 @@ export async function deleteSupabaseUser(userId: string): Promise<void> {
     .eq('id', userId);
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "users" ainda não criada no Supabase. Exclusão efetuada localmente.');
+      return;
+    }
     throw formatSupabaseError(error, `excluir usuário (${userId})`);
   }
 }
@@ -286,7 +316,9 @@ export function subscribeSupabaseUsers(onUsersChanged: (users: User[]) => void):
       async () => {
         try {
           const users = await getSupabaseUsers();
-          onUsersChanged(users);
+          if (users) {
+            onUsersChanged(users);
+          }
         } catch (err) {
           console.warn('Erro ao sincronizar usuários em tempo real do Supabase:', err);
         }
@@ -303,7 +335,7 @@ export function subscribeSupabaseUsers(onUsersChanged: (users: User[]) => void):
  * 3. LOGS (AUDITORIA E RASTREABILIDADE) - SUPABASE CRUD & REALTIME
  * ========================================================================================= */
 
-export async function getSupabaseLogs(): Promise<EventLog[]> {
+export async function getSupabaseLogs(): Promise<EventLog[] | null> {
   const client = requireSupabaseClient();
   const { data, error } = await client
     .from('logs')
@@ -312,6 +344,10 @@ export async function getSupabaseLogs(): Promise<EventLog[]> {
     .limit(500);
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.info('[Supabase] Tabela "public.logs" ainda não existe no Supabase. Utilizando armazenamento local para auditoria.');
+      return null;
+    }
     throw formatSupabaseError(error, 'consultar logs de auditoria');
   }
 
@@ -337,6 +373,10 @@ export async function insertSupabaseLog(log: EventLog): Promise<EventLog> {
     .single();
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "public.logs" não existe no Supabase. Log registrado localmente.');
+      return sanitized;
+    }
     throw formatSupabaseError(error, 'registrar log de auditoria');
   }
 
@@ -351,6 +391,9 @@ export async function deleteSupabaseLog(logId: string): Promise<void> {
     .eq('id', logId);
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      return;
+    }
     throw formatSupabaseError(error, `excluir log (${logId})`);
   }
 }
@@ -363,6 +406,9 @@ export async function clearSupabaseLogs(): Promise<void> {
     .neq('id', 'placeholder_keep_none');
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      return;
+    }
     throw formatSupabaseError(error, 'limpar histórico de logs de auditoria');
   }
 }
@@ -380,7 +426,9 @@ export function subscribeSupabaseLogs(onLogsChanged: (logs: EventLog[]) => void)
       async () => {
         try {
           const logs = await getSupabaseLogs();
-          onLogsChanged(logs);
+          if (logs) {
+            onLogsChanged(logs);
+          }
         } catch (err) {
           console.warn('Erro ao sincronizar logs em tempo real do Supabase:', err);
         }
@@ -397,7 +445,7 @@ export function subscribeSupabaseLogs(onLogsChanged: (logs: EventLog[]) => void)
  * 4. SETTINGS (CONFIGURAÇÕES DO SISTEMA) - SUPABASE CRUD & REALTIME
  * ========================================================================================= */
 
-export async function getSupabaseSettings(): Promise<Record<string, any>> {
+export async function getSupabaseSettings(): Promise<Record<string, any> | null> {
   const client = requireSupabaseClient();
   const { data, error } = await client
     .from('settings')
@@ -406,6 +454,10 @@ export async function getSupabaseSettings(): Promise<Record<string, any>> {
     .maybeSingle();
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.info('[Supabase] Tabela "public.settings" ainda não existe no Supabase. Utilizando configurações locais.');
+      return null;
+    }
     throw formatSupabaseError(error, 'consultar configurações do sistema');
   }
 
@@ -425,6 +477,10 @@ export async function upsertSupabaseSettings(settings: Record<string, any>): Pro
     .upsert(sanitized, { onConflict: 'id' });
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "public.settings" não encontrada no Supabase. Configuração salva localmente.');
+      return;
+    }
     throw formatSupabaseError(error, 'salvar configurações do sistema');
   }
 }
@@ -442,7 +498,9 @@ export function subscribeSupabaseSettings(onSettingsChanged: (settings: Record<s
       async () => {
         try {
           const settings = await getSupabaseSettings();
-          onSettingsChanged(settings);
+          if (settings) {
+            onSettingsChanged(settings);
+          }
         } catch (err) {
           console.warn('Erro ao sincronizar configurações em tempo real do Supabase:', err);
         }
@@ -459,7 +517,7 @@ export function subscribeSupabaseSettings(onSettingsChanged: (settings: Record<s
  * 5. FEEDBACKS (CANAL DE COMUNICAÇÃO OPERACIONAL) - SUPABASE CRUD & REALTIME
  * ========================================================================================= */
 
-export async function getSupabaseFeedbacks(): Promise<any[]> {
+export async function getSupabaseFeedbacks(): Promise<any[] | null> {
   const client = requireSupabaseClient();
   const { data, error } = await client
     .from('feedbacks')
@@ -467,6 +525,10 @@ export async function getSupabaseFeedbacks(): Promise<any[]> {
     .order('timestamp', { ascending: true });
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.info('[Supabase] Tabela "public.feedbacks" ainda não existe no Supabase. Utilizando feedbacks locais.');
+      return null;
+    }
     throw formatSupabaseError(error, 'consultar mensagens de feedback');
   }
 
@@ -484,6 +546,10 @@ export async function insertSupabaseFeedback(feedback: any): Promise<any> {
     .single();
 
   if (error) {
+    if (isTableNotFoundError(error)) {
+      console.warn('[Supabase] Tabela "public.feedbacks" não existe no Supabase. Mensagem gravada localmente.');
+      return sanitized;
+    }
     throw formatSupabaseError(error, 'enviar mensagem de feedback');
   }
 
@@ -503,7 +569,9 @@ export function subscribeSupabaseFeedbacks(onFeedbacksChanged: (feedbacks: any[]
       async () => {
         try {
           const msgs = await getSupabaseFeedbacks();
-          onFeedbacksChanged(msgs);
+          if (msgs) {
+            onFeedbacksChanged(msgs);
+          }
         } catch (err) {
           console.warn('Erro ao sincronizar feedbacks em tempo real do Supabase:', err);
         }
