@@ -375,6 +375,7 @@ class LocalDatabase {
   }
 
   private async seedUsersToFirestore() {
+    if (!db) return;
     try {
       const usersToSeed = this.getUsers();
       for (const u of usersToSeed) {
@@ -440,7 +441,7 @@ class LocalDatabase {
       upsertSupabaseLoad(sanitizedLoad).catch((err) => {
         console.warn('Erro ao salvar carga no Supabase:', err);
       });
-    } else {
+    } else if (db) {
       // Sync to Firestore with strict sanitization ensuring zero undefined fields
       const firestorePayload = sanitizeForFirestore(sanitizedLoad);
       setDoc(doc(db, 'loads', sanitizedLoad.id), firestorePayload, { merge: true }).catch((err) => {
@@ -468,7 +469,7 @@ class LocalDatabase {
       upsertSupabaseLoads(sanitizedList).catch((err) => {
         console.warn('Erro ao salvar lote de cargas no Supabase:', err);
       });
-    } else {
+    } else if (db) {
       try {
         sanitizedList.forEach(load => {
           const firestorePayload = sanitizeForFirestore(load);
@@ -492,7 +493,7 @@ class LocalDatabase {
       deleteSupabaseLoad(loadId).catch((err) => {
         console.warn('Erro ao deletar carga no Supabase:', err);
       });
-    } else {
+    } else if (db) {
       deleteDoc(doc(db, 'loads', loadId)).catch((err) => {
         handleFirestoreError(err, OperationType.DELETE, `loads/${loadId}`);
       });
@@ -575,9 +576,11 @@ class LocalDatabase {
       const logs = this.getLogs().filter(l => l.id !== id);
       localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs));
       this.notify('logs', logs);
-      deleteDoc(doc(db, 'logs', id)).catch(err => {
-        handleFirestoreError(err, OperationType.DELETE, `logs/${id}`);
-      });
+      if (db) {
+        deleteDoc(doc(db, 'logs', id)).catch(err => {
+          handleFirestoreError(err, OperationType.DELETE, `logs/${id}`);
+        });
+      }
       return true;
     }
     return false;
@@ -621,10 +624,12 @@ class LocalDatabase {
     this.notify('users', users);
 
     // Sync to Firestore
-    const firestoreUser = sanitizeForFirestore(user);
-    setDoc(doc(db, 'users', user.id), firestoreUser, { merge: true }).catch((err) => {
-      handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
-    });
+    if (db) {
+      const firestoreUser = sanitizeForFirestore(user);
+      setDoc(doc(db, 'users', user.id), firestoreUser, { merge: true }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
+      });
+    }
 
     return user;
   }
@@ -638,10 +643,12 @@ class LocalDatabase {
       this.notify('users', users);
 
       // Sync to Firestore
-      const firestorePartial = sanitizeForFirestore(partial);
-      setDoc(doc(db, 'users', userId), firestorePartial, { merge: true }).catch((err) => {
-        handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
-      });
+      if (db) {
+        const firestorePartial = sanitizeForFirestore(partial);
+        setDoc(doc(db, 'users', userId), firestorePartial, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+        });
+      }
 
       return users[index];
     }
@@ -654,9 +661,11 @@ class LocalDatabase {
     this.notify('users', users);
 
     // Sync to Firestore
-    deleteDoc(doc(db, 'users', userId)).catch((err) => {
-      handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
-    });
+    if (db) {
+      deleteDoc(doc(db, 'users', userId)).catch((err) => {
+        handleFirestoreError(err, OperationType.DELETE, `users/${userId}`);
+      });
+    }
   }
 
   // Register new user request
@@ -709,10 +718,12 @@ class LocalDatabase {
     this.notify('logs', trimmed);
 
     // Sync to Firestore
-    const firestoreLog = sanitizeForFirestore(newLog);
-    setDoc(doc(db, 'logs', newLog.id), firestoreLog).catch((err) => {
-      handleFirestoreError(err, OperationType.CREATE, `logs/${newLog.id}`);
-    });
+    if (db) {
+      const firestoreLog = sanitizeForFirestore(newLog);
+      setDoc(doc(db, 'logs', newLog.id), firestoreLog).catch((err) => {
+        handleFirestoreError(err, OperationType.CREATE, `logs/${newLog.id}`);
+      });
+    }
 
     return newLog;
   }
@@ -740,10 +751,12 @@ class LocalDatabase {
     this.notify('settings', merged);
 
     // Sync to Firestore
-    const firestoreSettings = sanitizeForFirestore(merged);
-    setDoc(doc(db, 'settings', 'system_config'), firestoreSettings, { merge: true }).catch((err) => {
-      handleFirestoreError(err, OperationType.WRITE, 'settings/system_config');
-    });
+    if (db) {
+      const firestoreSettings = sanitizeForFirestore(merged);
+      setDoc(doc(db, 'settings', 'system_config'), firestoreSettings, { merge: true }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, 'settings/system_config');
+      });
+    }
   }
 
   subscribeSettings(callback: (settings: Record<string, any>) => void): () => void {
