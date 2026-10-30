@@ -20,7 +20,7 @@ import {
 interface LoginViewProps {
   users: User[];
   onLoginSuccess: (user: User) => void;
-  onRegisterRequest: (user: Omit<User, 'id' | 'status' | 'createdAt'>) => void;
+  onRegisterRequest: (user: Omit<User, 'id' | 'status' | 'createdAt'>) => Promise<any> | void;
 }
 
 const ROLE_NAMES = {
@@ -49,7 +49,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onR
     return str.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
@@ -94,20 +94,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onR
         return;
       }
 
-      onRegisterRequest({
-        username,
-        password,
-        fullName,
-        storeLocation,
-        jobFunction,
-        role: registerRole,
-      });
-      setSuccess('Solicitação enviada! Aguarde a liberação do seu acesso.');
-      setMode('login');
-      setPassword('');
-      setFullName('');
-      setStoreLocation('');
-      setJobFunction('');
+      try {
+        await onRegisterRequest({
+          username,
+          password,
+          fullName,
+          storeLocation,
+          jobFunction,
+          role: registerRole,
+        });
+        setSuccess('Solicitação gravada no Supabase! Aguarde a liberação do seu acesso.');
+        setMode('login');
+        setPassword('');
+        setFullName('');
+        setStoreLocation('');
+        setJobFunction('');
+      } catch (err: any) {
+        console.error('Erro na solicitação de cadastro:', err);
+        setError(err?.message || 'Erro ao registrar solicitação no Supabase.');
+      }
     }
   };
 

@@ -353,8 +353,8 @@ export const FeedbackChat: React.FC<FeedbackChatProps> = ({ currentUser }) => {
     };
 
     try {
-      // Save locally to localDb
-      localDb.saveFeedback(newMsg);
+      // Save directly to Supabase and sync locally
+      await localDb.saveFeedback(newMsg);
       
       // Reset inputs
       setInputText('');

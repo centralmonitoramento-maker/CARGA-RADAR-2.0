@@ -84,22 +84,34 @@ export const SupervisorCDView: React.FC<SupervisorCDViewProps> = ({
   const [clearAllConfirmModal, setClearAllConfirmModal] = useState<boolean>(false);
   const [dataFeedback, setDataFeedback] = useState<string | null>(null);
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteConfirmModal) return;
     const { id, type, title } = deleteConfirmModal;
-    const success = localDb.deleteRecordById(id, type);
-    setDeleteConfirmModal(null);
-    if (success) {
-      setDataFeedback(`Registro "${title}" excluído permanentemente!`);
-      setTimeout(() => setDataFeedback(null), 3000);
+    try {
+      const success = await localDb.deleteRecordById(id, type);
+      setDeleteConfirmModal(null);
+      if (success) {
+        setDataFeedback(`Registro "${title}" excluído permanentemente no Supabase!`);
+        setTimeout(() => setDataFeedback(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('Erro ao excluir no Supabase:', err);
+      setDataFeedback(`Erro no Supabase: ${err?.message || 'Falha ao excluir'}`);
+      setDeleteConfirmModal(null);
     }
   };
 
-  const handleConfirmClearAll = () => {
-    localDb.clearAllSystemData();
-    setClearAllConfirmModal(false);
-    setDataFeedback('Todo o histórico operacional de cargas e logs foi apagado com sucesso!');
-    setTimeout(() => setDataFeedback(null), 4000);
+  const handleConfirmClearAll = async () => {
+    try {
+      await localDb.clearAllSystemData();
+      setClearAllConfirmModal(false);
+      setDataFeedback('Todo o histórico operacional de cargas e logs foi apagado com sucesso no Supabase!');
+      setTimeout(() => setDataFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao limpar dados no Supabase:', err);
+      setDataFeedback(`Erro no Supabase: ${err?.message || 'Falha ao limpar dados'}`);
+      setClearAllConfirmModal(false);
+    }
   };
 
   // Filter loads based on chosen timeframe

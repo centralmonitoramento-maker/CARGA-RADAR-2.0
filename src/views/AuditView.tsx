@@ -55,11 +55,11 @@ interface AuditViewProps {
   loads: CargoLoad[];
   users: User[];
   logs: EventLog[];
-  onUpdateOccurrence: (id: string, type: OccurrenceType, description: string, photo?: string | string[]) => void;
-  onApproveUser: (userId: string, approve: boolean) => void;
-  onDeleteUser: (userId: string) => void;
-  onChangePassword: (userId: string, newPassword: string) => void;
-  onUpdateSystemRole: (userId: string, systemRole: SystemRole) => void;
+  onUpdateOccurrence: (id: string, type: OccurrenceType, description: string, photo?: string | string[]) => Promise<any> | void;
+  onApproveUser: (userId: string, approve: boolean) => Promise<any> | void;
+  onDeleteUser: (userId: string) => Promise<any> | void;
+  onChangePassword: (userId: string, newPassword: string) => Promise<any> | void;
+  onUpdateSystemRole: (userId: string, systemRole: SystemRole) => Promise<any> | void;
   currentUser?: User | null;
 }
 
@@ -128,26 +128,38 @@ export const AuditView: React.FC<AuditViewProps> = ({
   const [clearAllConfirmModal, setClearAllConfirmModal] = useState<boolean>(false);
   const [dataManagementFeedback, setDataManagementFeedback] = useState<string | null>(null);
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteConfirmModal) return;
     const { id, type, title } = deleteConfirmModal;
-    const success = localDb.deleteRecordById(id, type);
-    if (selectedLoadId === id) {
-      setSelectedLoadId(null);
-    }
-    setDeleteConfirmModal(null);
-    if (success) {
-      setDataManagementFeedback(`Registro "${title}" excluído permanentemente!`);
-      setTimeout(() => setDataManagementFeedback(null), 3000);
+    try {
+      const success = await localDb.deleteRecordById(id, type);
+      if (selectedLoadId === id) {
+        setSelectedLoadId(null);
+      }
+      setDeleteConfirmModal(null);
+      if (success) {
+        setDataManagementFeedback(`Registro "${title}" excluído permanentemente no Supabase!`);
+        setTimeout(() => setDataManagementFeedback(null), 3000);
+      }
+    } catch (err: any) {
+      console.error('Erro ao excluir registro no Supabase:', err);
+      setError(err?.message || 'Erro ao excluir registro no Supabase.');
+      setDeleteConfirmModal(null);
     }
   };
 
-  const handleConfirmClearAll = () => {
-    localDb.clearAllSystemData();
-    setSelectedLoadId(null);
-    setClearAllConfirmModal(false);
-    setDataManagementFeedback('Todo o histórico operacional de cargas e logs foi apagado com sucesso!');
-    setTimeout(() => setDataManagementFeedback(null), 4000);
+  const handleConfirmClearAll = async () => {
+    try {
+      await localDb.clearAllSystemData();
+      setSelectedLoadId(null);
+      setClearAllConfirmModal(false);
+      setDataManagementFeedback('Todo o histórico operacional de cargas e logs foi apagado com sucesso no Supabase!');
+      setTimeout(() => setDataManagementFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao limpar dados no Supabase:', err);
+      setError(err?.message || 'Erro ao limpar dados no Supabase.');
+      setClearAllConfirmModal(false);
+    }
   };
 
   // User Filtering States and Selector
@@ -435,11 +447,16 @@ export const AuditView: React.FC<AuditViewProps> = ({
     setEmailActionFeedback('E-mail cadastrado com sucesso!');
     setTimeout(() => setEmailActionFeedback(null), 3000);
 
-    // Save to localDb
-    localDb.saveSettings({
-      occurrenceAlertEmails: updatedEmails,
-      autoEmailEnabled
-    });
+    // Save to Supabase
+    try {
+      await localDb.saveSettings({
+        occurrenceAlertEmails: updatedEmails,
+        autoEmailEnabled
+      });
+    } catch (err: any) {
+      console.error('Erro ao salvar configurações no Supabase:', err);
+      setError(err?.message || 'Erro ao salvar configurações no Supabase.');
+    }
   };
 
   const handleRemoveEmail = async (emailToRemove: string) => {
@@ -449,22 +466,32 @@ export const AuditView: React.FC<AuditViewProps> = ({
     setEmailActionFeedback('E-mail removido com sucesso!');
     setTimeout(() => setEmailActionFeedback(null), 3000);
 
-    // Save to localDb
-    localDb.saveSettings({
-      occurrenceAlertEmails: updatedEmails,
-      autoEmailEnabled
-    });
+    // Save to Supabase
+    try {
+      await localDb.saveSettings({
+        occurrenceAlertEmails: updatedEmails,
+        autoEmailEnabled
+      });
+    } catch (err: any) {
+      console.error('Erro ao atualizar configurações no Supabase:', err);
+      setError(err?.message || 'Erro ao atualizar configurações no Supabase.');
+    }
   };
 
   const handleToggleAutoEmail = async (checked: boolean) => {
     setAutoEmailEnabled(checked);
     localStorage.setItem('autoEmailEnabled', String(checked));
     
-    // Save to localDb
-    localDb.saveSettings({
-      occurrenceAlertEmails: alertEmails,
-      autoEmailEnabled: checked
-    });
+    // Save to Supabase
+    try {
+      await localDb.saveSettings({
+        occurrenceAlertEmails: alertEmails,
+        autoEmailEnabled: checked
+      });
+    } catch (err: any) {
+      console.error('Erro ao atualizar configurações no Supabase:', err);
+      setError(err?.message || 'Erro ao atualizar configurações no Supabase.');
+    }
   };
 
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -561,9 +588,15 @@ export const AuditView: React.FC<AuditViewProps> = ({
         ? (customOccType.trim() as OccurrenceType) 
         : occType;
 
-      onUpdateOccurrence(selectedLoad.id, finalOccType, occDescription, occPhoto.length > 0 ? occPhoto : undefined);
-      setSaveFeedback(true);
-      setTimeout(() => setSaveFeedback(false), 3000);
+      try {
+        await onUpdateOccurrence(selectedLoad.id, finalOccType, occDescription, occPhoto.length > 0 ? occPhoto : undefined);
+        setSaveFeedback(true);
+        setTimeout(() => setSaveFeedback(false), 3000);
+      } catch (err: any) {
+        console.error('Erro ao registrar ocorrência no Supabase:', err);
+        setError(err?.message || 'Erro ao registrar auditoria no Supabase.');
+        return;
+      }
 
       // Envia alerta de e-mail de imediato se habilitado
       if (autoEmailEnabled && alertEmails.length > 0) {

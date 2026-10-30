@@ -755,7 +755,7 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({ onSubmit, onUpda
     setInputPalletQty('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -812,59 +812,64 @@ export const ExpeditionView: React.FC<ExpeditionViewProps> = ({ onSubmit, onUpda
       });
     }
 
-    if (editingLoadId) {
-      const originalLoad = loads.find(l => l.id === editingLoadId);
-      if (!originalLoad) {
-        setError('Carga original não encontrada.');
-        return;
-      }
-      const updatedLoad: CargoLoad = {
-        ...originalLoad,
-        plate: normalizedPlate,
-        driverName,
-        driverPhone: driverPhone ? driverPhone.trim() : "",
-        cargoType,
-        origin,
-        destination,
-        additionalDestinations: cargoType === CargoType.COMPARTILHADA ? (additionalDestinations || []) : [],
-        sharedCargoDescriptions: cargoType === CargoType.COMPARTILHADA ? (sharedCargoDescriptions || {}) : {},
-        cargoClassificationByDest: cargoClassificationByDest || {},
-        sealNumber: combinedSeal,
-        palletCount,
-        palletDetails: payloadPalletDetails,
-        isHighRisk,
-        parType: isHighRisk ? parType : "",
-        parInvoiceNumber: isHighRisk ? parInvoiceNumber : "",
-        parDescription: isHighRisk ? parDescription : "",
-        photoPlate: originalLoad.photoPlate,
-        photoSeal: originalLoad.photoSeal,
-        photoManifest: originalLoad.photoManifest,
-      };
+    try {
+      if (editingLoadId) {
+        const originalLoad = loads.find(l => l.id === editingLoadId);
+        if (!originalLoad) {
+          setError('Carga original não encontrada.');
+          return;
+        }
+        const updatedLoad: CargoLoad = {
+          ...originalLoad,
+          plate: normalizedPlate,
+          driverName,
+          driverPhone: driverPhone ? driverPhone.trim() : "",
+          cargoType,
+          origin,
+          destination,
+          additionalDestinations: cargoType === CargoType.COMPARTILHADA ? (additionalDestinations || []) : [],
+          sharedCargoDescriptions: cargoType === CargoType.COMPARTILHADA ? (sharedCargoDescriptions || {}) : {},
+          cargoClassificationByDest: cargoClassificationByDest || {},
+          sealNumber: combinedSeal,
+          palletCount,
+          palletDetails: payloadPalletDetails,
+          isHighRisk,
+          parType: isHighRisk ? parType : "",
+          parInvoiceNumber: isHighRisk ? parInvoiceNumber : "",
+          parDescription: isHighRisk ? parDescription : "",
+          photoPlate: originalLoad.photoPlate,
+          photoSeal: originalLoad.photoSeal,
+          photoManifest: originalLoad.photoManifest,
+        };
 
-      if (onUpdateLoad) {
-        onUpdateLoad(updatedLoad);
+        if (onUpdateLoad) {
+          await onUpdateLoad(updatedLoad);
+        }
+        handleCancelEdit();
+      } else {
+        await onSubmit({
+          plate: normalizedPlate,
+          driverName,
+          driverPhone: driverPhone ? driverPhone.trim() : "",
+          cargoType,
+          origin,
+          destination,
+          additionalDestinations: cargoType === CargoType.COMPARTILHADA ? (additionalDestinations || []) : [],
+          sharedCargoDescriptions: cargoType === CargoType.COMPARTILHADA ? (sharedCargoDescriptions || {}) : {},
+          cargoClassificationByDest: cargoClassificationByDest || {},
+          sealNumber: combinedSeal,
+          palletCount,
+          palletDetails: payloadPalletDetails,
+          isHighRisk,
+          parType: isHighRisk ? parType : "",
+          parInvoiceNumber: isHighRisk ? parInvoiceNumber : "",
+          parDescription: isHighRisk ? parDescription : "",
+        });
+        handleCancelEdit();
       }
-      handleCancelEdit();
-    } else {
-      onSubmit({
-        plate: normalizedPlate,
-        driverName,
-        driverPhone: driverPhone ? driverPhone.trim() : "",
-        cargoType,
-        origin,
-        destination,
-        additionalDestinations: cargoType === CargoType.COMPARTILHADA ? (additionalDestinations || []) : [],
-        sharedCargoDescriptions: cargoType === CargoType.COMPARTILHADA ? (sharedCargoDescriptions || {}) : {},
-        cargoClassificationByDest: cargoClassificationByDest || {},
-        sealNumber: combinedSeal,
-        palletCount,
-        palletDetails: payloadPalletDetails,
-        isHighRisk,
-        parType: isHighRisk ? parType : "",
-        parInvoiceNumber: isHighRisk ? parInvoiceNumber : "",
-        parDescription: isHighRisk ? parDescription : "",
-      });
-      handleCancelEdit();
+    } catch (err: any) {
+      console.error('Erro ao gravar carga no Supabase:', err);
+      setError(err?.message || 'Erro ao registrar carga no Supabase.');
     }
   };
 

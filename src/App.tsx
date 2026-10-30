@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
-import { Keyboard, HelpCircle, X, Sparkles, CloudOff, RefreshCw } from 'lucide-react';
+import { Keyboard, HelpCircle, X, Sparkles, CloudOff, RefreshCw, AlertCircle } from 'lucide-react';
 import { ExpeditionView } from './views/ExpeditionView';
 import { CentralView } from './views/CentralView';
 import { AuditView } from './views/AuditView';
@@ -52,6 +52,7 @@ const App: React.FC = () => {
   // Keyboard Shortcut States for accelerated operator workflows
   const [shortcutFeedback, setShortcutFeedback] = useState<string | null>(null);
   const [showShortcutHelp, setShowShortcutHelp] = useState<boolean>(false);
+  const [supabaseErrorMessage, setSupabaseErrorMessage] = useState<string | null>(null);
 
 const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit', 'analysis', 'portaria', 'settings', 'reverse_transfer', 'guide'];
 
@@ -475,7 +476,11 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
   }, []);
 
   const addLog = async (action: string, details: string, username: string, loadId?: string) => {
-    localDb.addLog(action, details, username, loadId);
+    try {
+      await localDb.addLog(action, details, username, loadId);
+    } catch (err: any) {
+      console.warn('Erro ao gravar log no Supabase:', err);
+    }
   };
 
   const handleAddLoad = async (newLoadData: Omit<CargoLoad, 'id' | 'status' | 'createdAt' | 'createdBy'>) => {
@@ -488,12 +493,20 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
       createdBy: username,
     };
 
-    localDb.saveLoad(newLoad);
-    addLog('Criação de Carga', `Carga ${newLoad.plate} criada por ${username}`, username, newLoad.id);
-    
-    // Admins or specific roles might want to stay or move
-    if (loggedInUser?.systemRole === 'administrator' || loggedInUser?.role === 'central') {
-       handleTabChange('central');
+    try {
+      await localDb.saveLoad(newLoad);
+      await addLog('Criação de Carga', `Carga ${newLoad.plate} criada por ${username}`, username, newLoad.id);
+      setSupabaseErrorMessage(null);
+      
+      // Admins or specific roles might want to stay or move
+      if (loggedInUser?.systemRole === 'administrator' || loggedInUser?.role === 'central') {
+         handleTabChange('central');
+      }
+    } catch (err: any) {
+      console.error('Erro ao gravar carga no Supabase:', err);
+      const msg = err?.message || 'Erro ao gravar carga no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
     }
   };
 
@@ -602,15 +615,23 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
       auditedAt: newStatus === CargoStatus.RELEASED || newStatus === CargoStatus.BLOCKED || newStatus === CargoStatus.FINISHED ? timestamp : (load.auditedAt || "")
     };
 
-    localDb.saveLoad(updatedLoad);
-    addLog('Atualização de Status', `Carga ${load.plate} alterada para ${newStatus} por ${username}`, username, id);
+    try {
+      await localDb.saveLoad(updatedLoad);
+      await addLog('Atualização de Status', `Carga ${load.plate} alterada para ${newStatus} por ${username}`, username, id);
+      setSupabaseErrorMessage(null);
 
-    if (newStatus === CargoStatus.BLOCKED && load.status !== CargoStatus.BLOCKED) {
-      sendBlockedAlertEmail(updatedLoad);
+      if (newStatus === CargoStatus.BLOCKED && load.status !== CargoStatus.BLOCKED) {
+        sendBlockedAlertEmail(updatedLoad);
+      }
+    } catch (err: any) {
+      console.error('Erro ao atualizar status no Supabase:', err);
+      const msg = err?.message || 'Falha ao atualizar status no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
     }
   };
 
-  const handleUpdateOccurrence = async (id: string, type: OccurrenceType, description: string, photo?: string) => {
+  const handleUpdateOccurrence = async (id: string, type: OccurrenceType, description: string, photo?: string | string[]) => {
     const load = loads.find(l => l.id === id);
     const username = loggedInUser?.username || 'Sistema';
     const timestamp = new Date().toISOString();
@@ -622,7 +643,7 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
       ...load,
       occurrenceType: type,
       occurrenceDescription: description,
-      occurrencePhoto: photo || "",
+      occurrencePhoto: (Array.isArray(photo) ? photo[0] : photo) || "",
       auditedAt: timestamp,
       status: newStatus,
       occurrenceHistory: [
@@ -630,25 +651,41 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
         {
           type,
           description,
-          photo: photo || "",
+          photo: (Array.isArray(photo) ? photo[0] : photo) || "",
           auditor: username,
           timestamp
         }
       ]
     };
 
-    localDb.saveLoad(updatedLoad);
-    addLog('Auditoria de Carga', `Auditoria realizada na carga ${load.plate} por ${username}. Ocorrência: ${type}`, username, id);
+    try {
+      await localDb.saveLoad(updatedLoad);
+      await addLog('Auditoria de Carga', `Auditoria realizada na carga ${load.plate} por ${username}. Ocorrência: ${type}`, username, id);
+      setSupabaseErrorMessage(null);
 
-    if (newStatus === CargoStatus.BLOCKED && load.status !== CargoStatus.BLOCKED) {
-      sendBlockedAlertEmail(updatedLoad, type, description);
+      if (newStatus === CargoStatus.BLOCKED && load.status !== CargoStatus.BLOCKED) {
+        sendBlockedAlertEmail(updatedLoad, type, description);
+      }
+    } catch (err: any) {
+      console.error('Erro ao registrar ocorrência no Supabase:', err);
+      const msg = err?.message || 'Falha ao gravar auditoria no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
     }
   };
 
   const handleUpdateLoad = async (updatedLoad: CargoLoad) => {
     const username = loggedInUser?.username || 'Sistema';
-    localDb.saveLoad(updatedLoad);
-    addLog('Atualização de Carga', `Carga ${updatedLoad.plate} atualizada por ${username}`, username, updatedLoad.id);
+    try {
+      await localDb.saveLoad(updatedLoad);
+      await addLog('Atualização de Carga', `Carga ${updatedLoad.plate} atualizada por ${username}`, username, updatedLoad.id);
+      setSupabaseErrorMessage(null);
+    } catch (err: any) {
+      console.error('Erro ao atualizar carga no Supabase:', err);
+      const msg = err?.message || 'Falha ao atualizar carga no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
+    }
   };
 
   const handleDeleteLoad = async (loadId: string) => {
@@ -656,17 +693,34 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
     if (!load) return;
     const username = loggedInUser?.username || 'Sistema';
 
-    localDb.deleteLoad(loadId);
-    addLog('Exclusão de Carga', `Carga ${load.plate} excluída por ${username}`, username, loadId);
+    try {
+      await localDb.deleteLoad(loadId);
+      await addLog('Exclusão de Carga', `Carga ${load.plate} excluída por ${username}`, username, loadId);
+      setSupabaseErrorMessage(null);
+    } catch (err: any) {
+      console.error('Erro ao excluir carga no Supabase:', err);
+      const msg = err?.message || 'Falha ao excluir carga no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
+    }
   };
 
   const handleRegisterUser = async (user: Omit<User, 'id' | 'status' | 'createdAt'>) => {
-    const result = localDb.register({
-      ...user,
-      status: 'pending'
-    });
-    if (result.user) {
-      addLog('Solicitação de Cadastro', `Novo usuário ${result.user.username} (${result.user.fullName || 'S/N'}) - Unidade: ${result.user.storeLocation || 'S/N'} aguardando aprovação`, 'Sistema');
+    try {
+      const result = await localDb.register({
+        ...user,
+        status: 'pending'
+      });
+      if (result.user) {
+        await addLog('Solicitação de Cadastro', `Novo usuário ${result.user.username} (${result.user.fullName || 'S/N'}) - Unidade: ${result.user.storeLocation || 'S/N'} aguardando aprovação`, 'Sistema');
+      }
+      setSupabaseErrorMessage(null);
+      return result;
+    } catch (err: any) {
+      console.error('Erro ao cadastrar usuário no Supabase:', err);
+      const msg = err?.message || 'Falha ao cadastrar usuário no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
     }
   };
 
@@ -690,35 +744,67 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
       }
     }
     
-    localDb.updateUser(userId, { 
-      status: approve ? 'active' : 'rejected',
-      systemRole: systemRole
-    });
-    addLog('Gestão de Usuários', `Usuário ${user.username} ${approve ? 'aprovado' : 'rejeitado'} com perfil de sistema: ${systemRole} por ${username}`, username);
+    try {
+      await localDb.updateUser(userId, { 
+        status: approve ? 'active' : 'rejected',
+        systemRole: systemRole
+      });
+      await addLog('Gestão de Usuários', `Usuário ${user.username} ${approve ? 'aprovado' : 'rejeitado'} com perfil de sistema: ${systemRole} por ${username}`, username);
+      setSupabaseErrorMessage(null);
+    } catch (err: any) {
+      console.error('Erro ao autorizar usuário no Supabase:', err);
+      const msg = err?.message || 'Falha ao autorizar usuário no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
+    }
   };
 
   const handleDeleteUser = async (userId: string) => {
     const user = users.find(u => u.id === userId);
     const username = loggedInUser?.username || 'Sistema';
     if (!user) return;
-    localDb.deleteUser(userId);
-    addLog('Gestão de Usuários', `Usuário ${user.username} excluído por ${username}`, username);
+    try {
+      await localDb.deleteUser(userId);
+      await addLog('Gestão de Usuários', `Usuário ${user.username} excluído por ${username}`, username);
+      setSupabaseErrorMessage(null);
+    } catch (err: any) {
+      console.error('Erro ao excluir usuário no Supabase:', err);
+      const msg = err?.message || 'Falha ao excluir usuário no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
+    }
   };
 
   const handleChangePassword = async (userId: string, newPassword: string) => {
     const user = users.find(u => u.id === userId);
     const username = loggedInUser?.username || 'Sistema';
     if (!user) return;
-    localDb.updateUser(userId, { password: newPassword });
-    addLog('Gestão de Usuários', `Senha do usuário ${user.username} alterada por ${username}`, username);
+    try {
+      await localDb.updateUser(userId, { password: newPassword });
+      await addLog('Gestão de Usuários', `Senha do usuário ${user.username} alterada por ${username}`, username);
+      setSupabaseErrorMessage(null);
+    } catch (err: any) {
+      console.error('Erro ao alterar senha no Supabase:', err);
+      const msg = err?.message || 'Falha ao alterar senha no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
+    }
   };
 
   const handleUpdateSystemRole = async (userId: string, systemRole: SystemRole) => {
     const user = users.find(u => u.id === userId);
     const username = loggedInUser?.username || 'Sistema';
     if (!user) return;
-    localDb.updateUser(userId, { systemRole });
-    addLog('Gestão de Usuários', `Perfil de sistema do usuário ${user.username} alterado para ${systemRole} por ${username}`, username);
+    try {
+      await localDb.updateUser(userId, { systemRole });
+      await addLog('Gestão de Usuários', `Perfil de sistema do usuário ${user.username} alterado para ${systemRole} por ${username}`, username);
+      setSupabaseErrorMessage(null);
+    } catch (err: any) {
+      console.error('Erro ao atualizar perfil no Supabase:', err);
+      const msg = err?.message || 'Falha ao atualizar perfil no Supabase.';
+      setSupabaseErrorMessage(msg);
+      throw err;
+    }
   };
 
   const handleLoginSuccess = async (user: User) => {
@@ -807,8 +893,15 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
             onUpdateStatus={handleUpdateStatus} 
             onUpdateLoad={async (updatedLoad) => {
               const username = loggedInUser?.username || 'Sistema';
-              localDb.saveLoad(updatedLoad);
-              addLog('Atualização da Rota', `Carga ${updatedLoad.plate} atualizada no processo de rota por ${username}`, username, updatedLoad.id);
+              try {
+                await localDb.saveLoad(updatedLoad);
+                await addLog('Atualização da Rota', `Carga ${updatedLoad.plate} atualizada no processo de rota por ${username}`, username, updatedLoad.id);
+                setSupabaseErrorMessage(null);
+              } catch (err: any) {
+                console.error('Erro ao atualizar rota no Supabase:', err);
+                setSupabaseErrorMessage(err?.message || 'Falha ao atualizar rota no Supabase.');
+                throw err;
+              }
             }}
           />
         );
@@ -904,6 +997,40 @@ const VALID_TABS: TabType[] = ['supervisor_cd', 'expedition', 'central', 'audit'
       isOffline={isOffline}
       lastSyncTime={lastSyncTime}
     >
+      {/* Supabase Error Alert Banner */}
+      {supabaseErrorMessage && (
+        <div className="mb-6 bg-red-500/10 dark:bg-red-500/15 border-2 border-red-500/50 rounded-3xl p-5 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-6 duration-300 text-left">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 z-10 relative">
+            <div className="flex items-start md:items-center gap-4">
+              <div className="p-3 bg-red-500/20 text-red-600 dark:text-red-400 rounded-2xl shrink-0 shadow-lg border border-red-500/30">
+                <AlertCircle className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-black uppercase text-red-700 dark:text-red-300 tracking-wider">
+                    Erro no Banco de Dados Supabase
+                  </h4>
+                  <span className="bg-red-500/20 text-red-700 dark:text-red-400 text-[8.5px] font-black px-2 py-0.5 rounded-full border border-red-500/20 uppercase tracking-widest">
+                    Gravação Não Efetuada
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold text-red-700 dark:text-red-300 leading-relaxed max-w-4xl">
+                  {supabaseErrorMessage}
+                </p>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setSupabaseErrorMessage(null)}
+              className="px-3.5 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-800 dark:text-red-200 border border-red-500/40 rounded-2xl text-[10px] font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Fechar Alerta</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Persistent Offline Banner Toast */}
       {isOffline && isAuthenticated && (
         <div className="mb-6 bg-amber-500/10 dark:bg-amber-500/5 border-2 border-amber-500/30 dark:border-amber-500/20 rounded-3xl p-5 shadow-2xl relative overflow-hidden animate-in fade-in slide-in-from-top-6 duration-500 text-left">

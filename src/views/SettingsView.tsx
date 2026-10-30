@@ -54,11 +54,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ currentUser, loads }
   const [clearAllConfirmModal, setClearAllConfirmModal] = useState<boolean>(false);
   const [clearFeedback, setClearFeedback] = useState<string | null>(null);
 
-  const handleConfirmClearAll = () => {
-    localDb.clearAllSystemData();
-    setClearAllConfirmModal(false);
-    setClearFeedback('Todo o histórico operacional de cargas e logs foi apagado com sucesso!');
-    setTimeout(() => setClearFeedback(null), 4000);
+  const handleConfirmClearAll = async () => {
+    try {
+      await localDb.clearAllSystemData();
+      setClearAllConfirmModal(false);
+      setClearFeedback('Todo o histórico operacional de cargas e logs foi apagado com sucesso no Supabase!');
+      setTimeout(() => setClearFeedback(null), 4000);
+    } catch (err: any) {
+      console.error('Erro ao limpar dados no Supabase:', err);
+      setClearFeedback(`Erro no Supabase: ${err?.message || 'Falha ao limpar dados'}`);
+      setClearAllConfirmModal(false);
+    }
   };
 
   // Notification State
